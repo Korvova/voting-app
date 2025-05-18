@@ -1,3 +1,4 @@
+import React from 'react';
 import { useState, useEffect } from 'react';
 import io from 'socket.io-client';
 import PollModal from './components/PollModal';
@@ -7,35 +8,37 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [pollData, setPollData] = useState(null);
 
-useEffect(() => {
-  const socket = io('http://217.114.10.226:5000', {
-    reconnection: true,
-    reconnectionAttempts: 5,
-  });
+  useEffect(() => {
+    const socket = io('http://217.114.10.226:5000', {
+      reconnection: true,
+      reconnectionAttempts: 5,
+    });
 
-  socket.on('connect', () => {
-    console.log('Connected to Socket.IO server');
-  });
+    socket.on('connect', () => {
+      console.log('Connected to Socket.IO server');
+    });
 
-  socket.on('start-poll', (data) => {
-    setPollData(data);
-    setIsModalOpen(true);
-  });
+    socket.on('start-poll', (data) => {
+      setPollData(data);
+      setIsModalOpen(true);
+    });
 
-  socket.on('vote-changed', (data) => {
-    console.log('Vote changed:', data);
-    setPollData({ question: 'Vote Updated', options: ['Updated'] });
-    setIsModalOpen(true);
-  });
+  
+socket.on('vote-changed', (data) => {
+  console.log('Received vote-changed event:', data);
+  setPollData({ question: 'Vote Updated', options: ['Updated'] });
+  setIsModalOpen(true);
+});
 
-  socket.on('disconnect', () => {
-    console.log('Disconnected from Socket.IO server');
-  });
 
-  return () => {
-    socket.disconnect();
-  };
-}, []);
+    socket.on('disconnect', () => {
+      console.log('Disconnected from Socket.IO server');
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
 
   const closeModal = () => {
     setIsModalOpen(false);
