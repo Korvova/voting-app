@@ -1,35 +1,58 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState, useEffect } from 'react';
+import io from 'socket.io-client';
+import PollModal from './components/PollModal';
+import './App.css';
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [pollData, setPollData] = useState(null);
+
+  useEffect(() => {
+    const socket = io('http://217.114.10.226:5000', {
+      reconnection: true,
+      reconnectionAttempts: 5,
+    });
+
+    socket.on('connect', () => {
+      console.log('Connected to Socket.IO server');
+    });
+
+    socket.on('start-poll', (data) => {
+      setPollData(data);
+      setIsModalOpen(true);
+    });
+
+    socket.on('disconnect', () => {
+      console.log('Disconnected from Socket.IO server');
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    setPollData(null);
+  };
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div className="container">
+      <h1 className="title">RMS - Система голосования</h1>
+      <div className="login-form">
+        <input type="email" placeholder="Электронная почта" className="input" />
+        <input type="password" placeholder="Пароль" className="input" />
+        <a href="#" className="forgot-password">Напомнить пароль</a>
+        <button className="login-button">Войти</button>
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+      <PollModal
+        isOpen={isModalOpen}
+        question={pollData?.question || ''}
+        options={pollData?.options || []}
+        onClose={closeModal}
+      />
+    </div>
+  );
 }
 
-export default App
+export default App;
