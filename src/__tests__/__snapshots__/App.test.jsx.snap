@@ -1,0 +1,17 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`App UI сохраняет snapshot HTML главной страницы 1`] = `
+"<!DOCTYPE html><html lang="en"><head>
+    <meta charset="UTF-8">
+    <link rel="icon" type="image/svg+xml" href="/vite.svg">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vite + React</title>
+    <script type="module" crossorigin="" src="/assets/index-CrLHBHvD.js"></script>
+    <link rel="stylesheet" crossorigin="" href="/assets/index-DyMikYCs.css">
+  </head>
+  <body>
+    <div id="root"><div class="container"><h1 class="title">RMS - Система голосования</h1><div class="login-form"><input placeholder="Электронная почта" class="input" type="email"><input placeholder="Пароль" class="input" type="password"><a href="#" class="forgot-password">Напомнить пароль</a><button class="login-button">Войти</button></div></div></div>
+  
+
+</body></html>"
+`;

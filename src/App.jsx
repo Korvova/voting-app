@@ -1,66 +1,73 @@
-import React from 'react';
-import { useState, useEffect } from 'react';
-import io from 'socket.io-client';
-import PollModal from './components/PollModal';
+import { BrowserRouter as Router, Route, Routes, Navigate } from 'react-router-dom';
+import LoginPage from './pages/LoginPage';
+import AdminPanel from './pages/AdminPanel';
+import UserPage from './pages/UserPage';
+import ProtocolPage from './pages/ProtocolPage';
 import './App.css';
+import { useState } from 'react';
+import axios from 'axios';
 
 function App() {
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [pollData, setPollData] = useState(null);
+  const [user, setUser] = useState(null);
 
-  useEffect(() => {
-    const socket = io('http://217.114.10.226:5000', {
-      reconnection: true,
-      reconnectionAttempts: 5,
-    });
+  const handleLogin = async (userData) => {
+    try {
+      const response = await axios.post('http://217.114.10.226:5000/api/login', userData);
+      if (response.data.success) {
+        setUser(response.data.user);
+      } else {
+        console.log('Login failed:', response.data.error);
+      }
+    } catch (error) {
+      console.log('Login error:', error.message);
+    }
+  };
 
-    socket.on('connect', () => {
-      console.log('Connected to Socket.IO server');
-    });
-
-    socket.on('start-poll', (data) => {
-      setPollData(data);
-      setIsModalOpen(true);
-    });
-
-  
-socket.on('vote-changed', (data) => {
-  console.log('Received vote-changed event:', data);
-  setPollData({ question: 'Vote Updated', options: ['Updated'] });
-  setIsModalOpen(true);
-});
-
-
-    socket.on('disconnect', () => {
-      console.log('Disconnected from Socket.IO server');
-    });
-
-    return () => {
-      socket.disconnect();
-    };
-  }, []);
-
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setPollData(null);
+  const handleLogout = () => {
+    setUser(null);
   };
 
   return (
-    <div className="container">
-      <h1 className="title">RMS - Система голосования</h1>
-      <div className="login-form">
-        <input type="email" placeholder="Электронная почта" className="input" />
-        <input type="password" placeholder="Пароль" className="input" />
-        <a href="#" className="forgot-password">Напомнить пароль</a>
-        <button className="login-button">Войти</button>
-      </div>
-      <PollModal
-        isOpen={isModalOpen}
-        question={pollData?.question || ''}
-        options={pollData?.options || []}
-        onClose={closeModal}
-      />
-    </div>
+    <Router>
+      <Routes>
+        <Route
+          path="/"
+          element={
+            user ? (
+              user.isAdmin ? (
+                <Navigate to="/admin" />
+              ) : (
+                <Navigate to="/user" />
+              )
+            ) : (
+              <LoginPage onLogin={handleLogin} />
+            )
+          }
+        />
+        <Route
+          path="/admin/*"
+          element={
+            user && user.isAdmin ? (
+              <AdminPanel user={user} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        />
+        <Route
+          path="/user/*"
+          element={
+            user && !user.isAdmin ? (
+              <UserPage user={user} onLogout={handleLogout} />
+            ) : (
+              <Navigate to="/" />
+            )
+          }
+        >
+          <Route path="protocol/:id" element={<ProtocolPage />} />
+        </Route>
+      </Routes>
+    </Router>
   );
 }
 

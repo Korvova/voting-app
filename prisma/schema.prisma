@@ -7,16 +7,90 @@ datasource db {
   url      = "postgresql://postgres:postgres@localhost:5432/voting?schema=public"
 }
 
-model Poll {
-  id        Int      @id @default(autoincrement())
-  question  String
-  options   Option[]
+model User {
+  id          Int       @id @default(autoincrement())
+  email       String    @unique
+  password    String
+  name        String
+  phone       String?
+  isAdmin     Boolean   @default(false)
+  divisionId  Int?
+  division    Division? @relation(fields: [divisionId], references: [id])
+  meetings    Meeting[] @relation("MeetingParticipants")
+  votes       Vote[]
+  agendaItems AgendaItem[] @relation
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
-model Option {
-  id        Int      @id @default(autoincrement())
-  text      String
-  votes     Int      @default(0)
-  pollId    Int
-  poll      Poll     @relation(fields: [pollId], references: [id])
+model Division {
+  id          Int       @id @default(autoincrement())
+  name        String
+  users       User[]
+  meetings    Meeting[] @relation("MeetingDivisions")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Meeting {
+  id          Int          @id @default(autoincrement())
+  name        String
+  startTime   DateTime
+  endTime     DateTime
+  status      MeetingStatus @default(WAITING)
+  divisions   Division[]   @relation("MeetingDivisions")
+  participants User[]       @relation("MeetingParticipants")
+  agendaItems AgendaItem[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  isArchived  Boolean      @default(false)
+}
+
+model AgendaItem {
+  id          Int         @id @default(autoincrement())
+  number      Int
+  title       String
+  speakerId   Int?
+  speaker     User?       @relation(fields: [speakerId], references: [id])
+  meetingId   Int
+  meeting     Meeting     @relation(fields: [meetingId], references: [id])
+  link        String?
+  votes       Vote[]
+  voteResults VoteResult[]
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+}
+
+model Vote {
+  id          Int        @id @default(autoincrement())
+  userId      Int
+  user        User       @relation(fields: [userId], references: [id])
+  agendaItemId Int
+  agendaItem  AgendaItem @relation(fields: [agendaItemId], references: [id])
+  choice      VoteChoice
+  createdAt   DateTime   @default(now())
+}
+
+model VoteResult {
+  id          Int        @id @default(autoincrement())
+  agendaItemId Int
+  agendaItem  AgendaItem @relation(fields: [agendaItemId], references: [id])
+  question    String
+  votesFor    Int        @default(0)
+  votesAgainst Int       @default(0)
+  votesAbstain Int       @default(0)
+  votesAbsent  Int       @default(0)
+  createdAt   DateTime   @default(now())
+}
+
+enum MeetingStatus {
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum VoteChoice {
+  FOR
+  AGAINST
+  ABSTAIN
 }

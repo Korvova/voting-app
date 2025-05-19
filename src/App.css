@@ -1,68 +1,761 @@
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+.app {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
   align-items: center;
-  z-index: 1000;
+  justify-content: center;
+  height: 100vh;
+  background-color: #f0f2f5;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.title {
+  font-size: 3rem;
+  font-weight: bold;
+  color: #1a73e8;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.login-form {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 400px;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+}
+
+.form-group input[type="datetime-local"] {
+  width: 200px; /* Уменьшаем размер инпутов для даты/времени */
+}
+
+button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #1a73e8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  cursor: pointer;
+  margin-top: 1rem;
+}
+
+button:hover {
+  background-color: #1557b0;
+}
+
+.forgot-password {
+  color: #1a73e8;
+  text-align: center;
+  cursor: pointer;
+  margin-top: 1rem;
+}
+
+.forgot-password:hover {
+  text-decoration: underline;
 }
 
 .modal {
-  background-color: #fff;
-  padding: 24px;
-  border-radius: 16px;
-  max-width: 400px;
-  width: 90%;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-content {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
   text-align: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 800px; /* Увеличиваем ширину */
+  max-height: 80vh; /* Ограничиваем высоту */
+  overflow-y: auto; /* Добавляем скролл */
 }
 
-.modal h2 {
-  font-size: 24px;
-  font-weight: 600;
-  color: #1d1d1f;
-  margin-bottom: 20px;
+.modal-content p {
+  margin-bottom: 1.5rem;
 }
 
-.options {
+.modal-content button {
+  width: auto;
+  padding: 0.5rem 1rem;
+  margin: 0 0.5rem;
+}
+
+.admin-panel {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 20px;
+  min-height: 100vh;
+  background-color: #f4f6f9;
 }
 
-.option-button {
-  padding: 12px;
-  font-size: 16px;
-  font-weight: 500;
-  color: #007aff;
-  background-color: #f5f5f7;
+.header {
+  background-color: #1a73e8;
+  color: white;
+  padding: 1rem;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.logout-button {
+  background-color: #d93025;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  margin-top: 0;
+}
+
+.logout-button:hover {
+  background-color: #b71c1c;
+}
+
+.menu {
+  display: flex;
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #e8eaf6;
+  justify-content: center;
+}
+
+.menu button {
+  background-color: #3949ab;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border-radius: 6px;
+  transition: background-color 0.3s;
+}
+
+.menu button:hover {
+  background-color: #1a237e;
+}
+
+.menu button.active {
+  background-color: #1a237e;
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.2);
+}
+
+.content {
+  flex: 1;
+  padding: 2rem;
+  text-align: center;
+}
+
+.users-page {
+  padding: 2rem;
+}
+
+.add-button {
+  background-color: #34c759;
+  padding: 0.75rem 1.5rem;
+  margin-bottom: 1rem;
+  font-size: 1rem;
+  border-radius: 6px;
+  transition: background-color 0.3s;
+}
+
+.add-button:hover {
+  background-color: #2ea44f;
+}
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.users-table th,
+.users-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.users-table th {
+  background-color: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+}
+
+.users-table td {
+  color: #555;
+}
+
+.users-table tr:hover {
+  background-color: #f9f9f9;
+}
+
+.delete-button {
+  background-color: #d93025;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.9rem;
+  margin-top: 0;
+  width: auto;
+}
+
+.delete-button:hover {
+  background-color: #b71c1c;
+}
+
+.divisions-page {
+  padding: 2rem;
+}
+
+.divisions-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.divisions-table th,
+.divisions-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.divisions-table th {
+  background-color: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+}
+
+.divisions-table td {
+  color: #555;
+}
+
+.divisions-table tr:hover {
+  background-color: #f9f9f9;
+}
+
+.meetings-page {
+  padding: 2rem;
+}
+
+.meetings-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.archive-button {
+  background-color: #757575;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  border-radius: 6px;
+  transition: background-color 0.3s;
+}
+
+.archive-link {
+  color: #1a73e8;
+  text-decoration: none;
+  font-size: 1rem;
+}
+
+.archive-link:hover {
+  text-decoration: underline;
+}
+
+.archive-button:hover {
+  background-color: #616161;
+}
+
+.meetings-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.meetings-table th,
+.meetings-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.meetings-table th {
+  background-color: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+}
+
+.meetings-table td {
+  color: #555;
+}
+
+.meetings-table tr:hover {
+  background-color: #f9f9f9;
+}
+
+.meetings-table a {
+  color: #1a73e8;
+  text-decoration: none;
+}
+
+.meetings-table a:hover {
+  text-decoration: underline;
+}
+
+.meetings-table .divisions-column {
+  white-space: pre-line; /* Позволяет переносить текст на новую строку */
+}
+
+.archive-icon {
+  background: none;
   border: none;
-  border-radius: 12px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  font-size: 1.2rem;
 }
 
-.option-button:hover {
-  background-color: #e0e0e2;
+.divisions-list {
+  margin: 1rem 0;
 }
 
-.close-button {
-  padding: 12px;
-  font-size: 16px;
-  font-weight: 500;
-  color: #fff;
-  background-color: #ff3b30;
+.division-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.division-item button {
+  background: none;
   border: none;
-  border-radius: 12px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  font-size: 1.2rem;
+  margin-top: 0;
 }
 
-.close-button:hover {
-  background-color: #cc2e26;
+.agenda-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+.agenda-table th,
+.agenda-table td {
+  padding: 0.5rem;
+  border: 1px solid #e0e0e0;
+}
+
+.agenda-table th {
+  background-color: #f5f5f5;
+  font-weight: 600;
+}
+
+.agenda-table input,
+.agenda-table select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.agenda-table input,
+.agenda-table select {
+  width: 100%;
+  max-width: 100%; /* Ограничиваем ширину */
+  box-sizing: border-box; /* Учитываем padding и border в ширине */
+}
+
+.add-agenda-button {
+  background-color: #34c759;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  margin: 1rem 0;
+  border-radius: 6px;
+}
+
+.add-agenda-button:hover {
+  background-color: #2ea44f;
+}
+
+.modal-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 2rem;
+}
+
+.control-page {
+  padding: 2rem;
+}
+
+.control-page h2 {
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.control-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.control-table th,
+.control-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.control-table th {
+  background-color: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+}
+
+.control-table td {
+  color: #555;
+}
+
+.control-table tr:hover {
+  background-color: #f9f9f9;
+}
+
+.vote-results-column {
+  white-space: pre-line; /* Отображение итогов в столбик */
+}
+
+.voting-active {
+  background-color: #e0ffe0; /* Светло-зелёный фон для активного голосования */
+}
+
+.voting-completed {
+  background-color: #e0e0e0; /* Серый фон для завершённого голосования */
+}
+
+.vote-results .action-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.vote-results .action-buttons button {
+  width: 100px; /* Уменьшаем ширину кнопок "Применить" и "Отмена" */
+}
+
+.start-meeting-button {
+  width: 180px; /* Уменьшаем ширину кнопки "Начать заседание" */
+}
+
+.start-meeting-button.start {
+  background-color: #34c759; /* Зелёный цвет для "▶ Начать заседание" */
+}
+
+.start-meeting-button.start:hover {
+  background-color: #2ea44f;
+}
+
+.start-meeting-button.end {
+  background-color: #f40e0e; /* Красный цвет для "⏹ Завершить заседание" */
+}
+
+.start-meeting-button.end:hover {
+  background-color: #dd1e1e;
+}
+
+.start-meeting-button.completed {
+  background-color: #a28663; /* Оранжево-серый цвет для "✔ Завершено" */
+  color: #666;
+}
+
+.action-column {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.vote-button,
+.end-vote-button {
+  width: 80px; /* Одинаковая ширина для кнопок "▷" и "Завершить" */
+  padding: 0.5rem;
+  font-size: 0.9rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vote-button {
+  background-color: #1a73e8;
+  color: white;
+}
+
+.vote-button:disabled {
+  background-color: #b0b0b0; /* Серый цвет для неактивной кнопки "▷" */
+  cursor: not-allowed;
+}
+
+.end-vote-button {
+  background-color: #ff5733; /* Оранжево-красный цвет для кнопки "Завершить" */
+  color: white;
+}
+
+.end-vote-button:hover {
+  background-color: #e64a19;
+}
+
+.completed-text {
+  color: #888;
+  font-size: 0.9rem;
+  margin-left: 0.5rem;
+}
+
+.start-warning-button {
+  background-color: #34c759; /* Зелёный цвет для кнопки "Запустить" */
+}
+
+.start-warning-button:hover {
+  background-color: #2ea44f;
+}
+
+.user-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #f4f6f9;
+}
+
+.meeting-container {
+  position: relative;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+  display: grid;
+  grid-template-areas: 
+    "agenda participants";
+  grid-template-columns: 65% 30%;
+  gap: 2rem;
+}
+
+.agenda-section {
+  grid-area: agenda;
+  width: 100%;
+}
+
+.agenda-items-table {
+  width: 100%; /* Таблица занимает всю ширину своего контейнера */
+  border-collapse: collapse;
+  background: #f9f9f9;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.agenda-items-table th,
+.agenda-items-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.agenda-items-table th {
+  background-color: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+}
+
+.agenda-items-table td {
+  color: #555;
+}
+
+.agenda-items-table tr:hover {
+  background-color: #f0f0f0;
+}
+
+
+.agenda-items-table .active-agenda-item {
+  background-color: #e0ffe0; /* Светло-зелёный цвет для текущего вопроса */
+}
+
+.participants-section {
+  grid-area: participants;
+  position: sticky;
+  top: 2rem;
+  width: 100%;
+}
+
+.participants-block {
+  padding: 1rem;
+  background: #e8eaf6;
+  border-radius: 4px;
+  text-align: left;
+}
+
+.participants-block p {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.participants-block h3 {
+  font-size: 1.2rem;
+  color: #333;
+  margin-bottom: 0.5rem;
+}
+
+.participants-list {
+  max-height: 200px; /* Высота для отображения примерно 10 участников */
+  overflow-y: auto; /* Добавляем скролл */
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.participants-list li {
+  font-size: 1rem;
+  margin: 0.3rem 0;
+  color: #555;
+}
+
+.protocol-link {
+  display: inline-block;
+  margin-top: 1rem;
+  color: #1a73e8;
+  text-decoration: none;
+  font-size: 1rem;
+}
+
+.protocol-link:hover {
+  text-decoration: underline;
+}
+
+.protocol-page {
+  padding: 2rem;
+}
+
+.protocol-page h2 {
+  margin-bottom: 1rem;
+  font-size: 1.5rem;
+  color: #333;
+}
+
+.protocol-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.protocol-table th,
+.protocol-table td {
+  padding: 1rem;
+  text-align: left;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.protocol-table th {
+  background-color: #f5f5f5;
+  font-weight: 600;
+  color: #333;
+}
+
+.protocol-table td {
+  color: #555;
+}
+
+.protocol-table tr:hover {
+  background-color: #f9f9f9;
+}
+
+.vote-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.vote-button {
+  width: 100px;
+  padding: 0.75rem;
+  font-size: 1rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  background-color: #1a73e8;
+  color: white;
+}
+
+.vote-button:hover:not(:disabled) {
+  background-color: #1557b0;
+}
+
+.vote-button:disabled {
+  background-color: #b0b0b0;
+  cursor: not-allowed;
+}
+
+.vote-button-selected {
+  width: 100px;
+  padding: 0.75rem;
+  font-size: 1rem;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  background-color: #34c759;
+  color: white;
 }
