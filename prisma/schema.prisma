@@ -62,6 +62,7 @@ model AgendaItem {
   updatedAt   DateTime    @updatedAt
   voting      Boolean     @default(false)
   completed   Boolean     @default(false)
+  activeIssue Boolean     @default(false) // Поля показывает активный вопрос
 }
 
 model Vote {

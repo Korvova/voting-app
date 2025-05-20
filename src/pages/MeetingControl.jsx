@@ -22,17 +22,45 @@ function MeetingControl() {
       try {
         const response = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}`);
         const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
-        setMeeting({
-          ...response.data,
-          agendaItems: agendaResponse.data.map(item => ({
+        const voteResultsResponse = await axios.get(`http://217.114.10.226:5000/api/vote-results?meetingId=${id}`);
+
+        const agendaItemsWithVotes = agendaResponse.data.map(item => {
+          const relatedVotes = voteResultsResponse.data
+            .filter(vote => vote.agendaItemId === item.id && vote.voteStatus === 'APPLIED')
+            .map(vote => `${vote.question}, За - ${vote.votesFor}, Против - ${vote.votesAgainst}, Воздержались - ${vote.votesAbstain}, Не проголосовали - ${vote.votesAbsent}`);
+
+          return {
             id: item.id,
             number: item.number,
             title: item.title,
             speaker: item.speaker,
-            votes: [],
+            votes: relatedVotes,
             voting: item.voting,
             completed: item.completed,
-          })),
+          };
+        });
+
+        // Проверяем, есть ли голосование со статусом ENDED
+        const endedVote = voteResultsResponse.data.find(vote => vote.voteStatus === 'ENDED');
+        if (endedVote) {
+          setVoteResults({
+            id: endedVote.id,
+            question: endedVote.question,
+            votesFor: endedVote.votesFor,
+            votesAgainst: endedVote.votesAgainst,
+            votesAbstain: endedVote.votesAbstain,
+            votesAbsent: endedVote.votesAbsent,
+          });
+          // Устанавливаем activeVote для этого голосования
+          const relatedAgendaItem = agendaItemsWithVotes.find(item => item.id === endedVote.agendaItemId);
+          if (relatedAgendaItem) {
+            setActiveVote(relatedAgendaItem);
+          }
+        }
+
+        setMeeting({
+          ...response.data,
+          agendaItems: agendaItemsWithVotes,
         });
         setStatus(response.data.status);
       } catch (error) {
@@ -284,39 +312,39 @@ function MeetingControl() {
   };
 
   // Отмена результатов голосования
-const handleVoteResultsCancel = async () => {
-  try {
-    if (voteResults && voteResults.id) {
-      await axios.post(`http://217.114.10.226:5000/api/vote-results/${voteResults.id}/cancel`);
-    }
-    setVoteResults(null);
-    setActiveVote(null);
-    setVoteResultsError(null);
-    const fetchMeeting = async () => {
-      try {
-        const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
-        setMeeting(prev => ({
-          ...prev,
-          agendaItems: agendaResponse.data.map(item => ({
-            id: item.id,
-            number: item.number,
-            title: item.title,
-            speaker: item.speaker,
-            votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
-            voting: item.voting,
-            completed: item.completed,
-          })),
-        }));
-      } catch (error) {
-        console.error('Error fetching meeting:', error.message);
+  const handleVoteResultsCancel = async () => {
+    try {
+      if (voteResults && voteResults.id) {
+        await axios.post(`http://217.114.10.226:5000/api/vote-results/${voteResults.id}/cancel`);
       }
-    };
-    fetchMeeting();
-  } catch (error) {
-    console.error('Error cancelling vote:', error.message);
-    setVoteResultsError('Не удалось отменить голосование');
-  }
-};
+      setVoteResults(null);
+      setActiveVote(null);
+      setVoteResultsError(null);
+      const fetchMeeting = async () => {
+        try {
+          const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
+          setMeeting(prev => ({
+            ...prev,
+            agendaItems: agendaResponse.data.map(item => ({
+              id: item.id,
+              number: item.number,
+              title: item.title,
+              speaker: item.speaker,
+              votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
+              voting: item.voting,
+              completed: item.completed,
+            })),
+          }));
+        } catch (error) {
+          console.error('Error fetching meeting:', error.message);
+        }
+      };
+      fetchMeeting();
+    } catch (error) {
+      console.error('Error cancelling vote:', error.message);
+      setVoteResultsError('Не удалось отменить голосование');
+    }
+  };
 
   // Обработка ввода данных для голосования
   const handleVoteInputChange = (e) => {
