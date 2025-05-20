@@ -22,6 +22,9 @@ function MeetingControl() {
       try {
         const response = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}`);
         const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
+
+        console.log('Agenda items from API:', agendaResponse.data); // Добавь эту строку
+
         const voteResultsResponse = await axios.get(`http://217.114.10.226:5000/api/vote-results?meetingId=${id}`);
 
         const agendaItemsWithVotes = agendaResponse.data.map(item => {
@@ -37,10 +40,10 @@ function MeetingControl() {
             votes: relatedVotes,
             voting: item.voting,
             completed: item.completed,
+            activeIssue: item.activeIssue, // Добавляем activeIssue
           };
-        });
+        }).sort((a, b) => a.number - b.number);
 
-        // Проверяем, есть ли голосование со статусом ENDED
         const endedVote = voteResultsResponse.data.find(vote => vote.voteStatus === 'ENDED');
         if (endedVote) {
           setVoteResults({
@@ -51,7 +54,6 @@ function MeetingControl() {
             votesAbstain: endedVote.votesAbstain,
             votesAbsent: endedVote.votesAbsent,
           });
-          // Устанавливаем activeVote для этого голосования
           const relatedAgendaItem = agendaItemsWithVotes.find(item => item.id === endedVote.agendaItemId);
           if (relatedAgendaItem) {
             setActiveVote(relatedAgendaItem);
@@ -93,7 +95,11 @@ function MeetingControl() {
               votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
               voting: item.voting,
               completed: item.completed,
-            })),
+              activeIssue: item.activeIssue, // Добавляем activeIssue
+            }))
+
+.sort((a, b) => a.number - b.number), // Add sorting by number
+
           }));
         } catch (error) {
           console.error('Error fetching meeting:', error.message);
@@ -117,7 +123,6 @@ function MeetingControl() {
             votesAbsent: response.data.votesAbsent,
           });
           setVoteResultsError(null);
-          // Обновляем состояние повестки
           const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
           setMeeting(prev => ({
             ...prev,
@@ -129,6 +134,7 @@ function MeetingControl() {
               votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
               voting: item.voting,
               completed: item.completed,
+              activeIssue: item.activeIssue, // Добавляем activeIssue
             })),
           }));
         } catch (error) {
@@ -139,31 +145,32 @@ function MeetingControl() {
     });
 
     socket.on('vote-applied', () => {
-      console.log('Vote applied');
-      setVoteResults(null);
-      setActiveVote(null);
-      setVoteResultsError(null);
-      const fetchMeeting = async () => {
-        try {
-          const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
-          setMeeting(prev => ({
-            ...prev,
-            agendaItems: agendaResponse.data.map(item => ({
-              id: item.id,
-              number: item.number,
-              title: item.title,
-              speaker: item.speaker,
-              votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
-              voting: item.voting,
-              completed: item.completed,
-            })),
-          }));
-        } catch (error) {
-          console.error('Error fetching meeting:', error.message);
-        }
-      };
-      fetchMeeting();
-    });
+  console.log('Vote applied');
+  setVoteResults(null);
+  setActiveVote(null);
+  setVoteResultsError(null);
+  const fetchMeeting = async () => {
+    try {
+      const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
+      setMeeting(prev => ({
+        ...prev,
+        agendaItems: agendaResponse.data.map(item => ({
+          id: item.id,
+          number: item.number,
+          title: item.title,
+          speaker: item.speaker,
+          votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
+          voting: item.voting,
+          completed: item.completed,
+          activeIssue: item.activeIssue,
+        })),
+      }));
+    } catch (error) {
+      console.error('Error fetching meeting:', error.message);
+    }
+  };
+  fetchMeeting();
+});
 
     socket.on('meeting-ended', () => {
       console.log('Meeting ended');
@@ -174,6 +181,7 @@ function MeetingControl() {
           ...item,
           voting: false,
           completed: true,
+          activeIssue: false, // Сбрасываем activeIssue
         })),
       });
     });
@@ -214,18 +222,24 @@ function MeetingControl() {
   };
 
   // Запуск голосования
-  const handleStartVote = (agendaItem) => {
+  const handleStartVote = async (agendaItem) => {
     if (status === 'WAITING') {
       setShowStartWarningModal(true);
       return;
     }
     setActiveVote(agendaItem);
+    await axios.put(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items/${agendaItem.id}`, {
+      number: agendaItem.number,
+      title: agendaItem.title,
+      speakerId: agendaItem.speakerId,
+      link: agendaItem.link,
+      activeIssue: true,
+    });
     setShowVoteModal(true);
-    // Локально устанавливаем voting: true для немедленного отображения
     setMeeting(prev => ({
       ...prev,
       agendaItems: prev.agendaItems.map(item =>
-        item.id === agendaItem.id ? { ...item, voting: true } : item
+        item.id === agendaItem.id ? { ...item, voting: true, activeIssue: true } : item
       ),
     }));
   };
@@ -236,11 +250,10 @@ function MeetingControl() {
     setActiveVote(null);
     setVoteResults(null);
     socket.emit('vote-ended');
-    // Локально сбрасываем voting и устанавливаем completed
     setMeeting(prev => ({
       ...prev,
       agendaItems: prev.agendaItems.map(item =>
-        item.id === agendaItem.id ? { ...item, voting: false, completed: true } : item
+        item.id === agendaItem.id ? { ...item, voting: false, completed: true, activeIssue: false } : item
       ),
     }));
   };
@@ -299,6 +312,7 @@ function MeetingControl() {
                   ...item.votes,
                   `${voteResults.question}, За - ${voteResults.votesFor}, Против - ${voteResults.votesAgainst}, Воздержались - ${voteResults.votesAbstain}, Не проголосовали - ${voteResults.votesAbsent}`
                 ],
+               
               }
             : item
         ),
@@ -313,38 +327,39 @@ function MeetingControl() {
 
   // Отмена результатов голосования
   const handleVoteResultsCancel = async () => {
-    try {
-      if (voteResults && voteResults.id) {
-        await axios.post(`http://217.114.10.226:5000/api/vote-results/${voteResults.id}/cancel`);
-      }
-      setVoteResults(null);
-      setActiveVote(null);
-      setVoteResultsError(null);
-      const fetchMeeting = async () => {
-        try {
-          const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
-          setMeeting(prev => ({
-            ...prev,
-            agendaItems: agendaResponse.data.map(item => ({
-              id: item.id,
-              number: item.number,
-              title: item.title,
-              speaker: item.speaker,
-              votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
-              voting: item.voting,
-              completed: item.completed,
-            })),
-          }));
-        } catch (error) {
-          console.error('Error fetching meeting:', error.message);
-        }
-      };
-      fetchMeeting();
-    } catch (error) {
-      console.error('Error cancelling vote:', error.message);
-      setVoteResultsError('Не удалось отменить голосование');
+  try {
+    if (voteResults && voteResults.id) {
+      await axios.post(`http://217.114.10.226:5000/api/vote-results/${voteResults.id}/cancel`);
     }
-  };
+    setVoteResults(null);
+    setActiveVote(null);
+    setVoteResultsError(null);
+    const fetchMeeting = async () => {
+      try {
+        const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
+        setMeeting(prev => ({
+          ...prev,
+          agendaItems: agendaResponse.data.map(item => ({
+            id: item.id,
+            number: item.number,
+            title: item.title,
+            speaker: item.speaker,
+            votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
+            voting: item.voting,
+            completed: item.completed,
+            activeIssue: prev.agendaItems.find(i => i.id === item.id)?.activeIssue || item.activeIssue, // Сохраняем текущее значение activeIssue
+          })),
+        }));
+      } catch (error) {
+        console.error('Error fetching meeting:', error.message);
+      }
+    };
+    fetchMeeting();
+  } catch (error) {
+    console.error('Error cancelling vote:', error.message);
+    setVoteResultsError('Не удалось отменить голосование');
+  }
+};
 
   // Обработка ввода данных для голосования
   const handleVoteInputChange = (e) => {
@@ -364,6 +379,9 @@ function MeetingControl() {
   };
 
   if (!meeting) return <div>Загрузка...</div>;
+
+console.log('Agenda items in render:', meeting.agendaItems); // Добавляем лог
+
 
   return (
     <div className="meeting-control">
@@ -391,7 +409,7 @@ function MeetingControl() {
           {meeting.agendaItems.map(item => (
             <tr
               key={item.id}
-              className={item.voting ? 'voting-active' : item.completed ? 'voting-completed' : ''}
+              className={`${item.voting ? 'voting-active' : item.completed ? 'voting-completed' : ''} ${item.activeIssue ? 'active-agenda-item' : ''}`}
             >
               <td>{item.number}</td>
               <td>{item.title}</td>

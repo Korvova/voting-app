@@ -477,6 +477,8 @@ app.get('/api/meetings/:id/agenda-items', async (req, res) => {
     const agendaItems = await prisma.agendaItem.findMany({
       where: { meetingId: parseInt(id) },
       include: { speaker: true },
+      orderBy: { number: 'asc' },
+    
     });
     res.json(agendaItems.map(item => ({
       id: item.id,
@@ -487,6 +489,7 @@ app.get('/api/meetings/:id/agenda-items', async (req, res) => {
       link: item.link,
       voting: item.voting,
       completed: item.completed,
+      activeIssue: item.activeIssue,
     })));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -518,7 +521,7 @@ app.post('/api/meetings/:id/agenda-items', async (req, res) => {
 
 app.put('/api/meetings/:id/agenda-items/:itemId', async (req, res) => {
   const { id, itemId } = req.params;
-  const { number, title, speakerId, link } = req.body;
+  const { number, title, speakerId, link, activeIssue } = req.body;
   console.log(`Updating agenda item ${itemId} for meeting ${id}:`, req.body);
   try {
     const agendaItem = await prisma.agendaItem.update({
@@ -528,6 +531,7 @@ app.put('/api/meetings/:id/agenda-items/:itemId', async (req, res) => {
         title,
         speakerId: speakerId ? parseInt(speakerId) : null,
         link,
+        activeIssue: activeIssue !== undefined ? activeIssue : undefined, // Обновляем, только если передан
       },
     });
     res.json(agendaItem);

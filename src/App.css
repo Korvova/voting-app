@@ -772,3 +772,6 @@ button:hover {
   color: #333; /* Тёмный текст для читаемости */
 }
 
+.agenda-table .active-agenda-item {
+  background-color: #e0ffe0 !important; /* Добавляем !important для теста */
+}
