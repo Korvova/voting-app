@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 
 function DivisionsPage() {
   const [divisions, setDivisions] = useState([]);
+  const [users, setUsers] = useState([]); // Список всех пользователей
+  const [availableUsers, setAvailableUsers] = useState([]); // Пользователи без подразделения
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -10,19 +13,50 @@ function DivisionsPage() {
   const [newDivision, setNewDivision] = useState({ name: '', users: [] });
 
   useEffect(() => {
-    // Заглушка для загрузки подразделений
-    setDivisions([
-      { id: 1, name: 'Отдел 1', userCount: 3 },
-    ]);
+    // Получение списка подразделений через API
+    const fetchDivisions = async () => {
+      try {
+        const response = await axios.get('http://217.114.10.226:5000/api/divisions');
+        setDivisions(response.data);
+      } catch (error) {
+        console.error('Error fetching divisions:', error.message);
+      }
+    };
+
+    // Получение списка пользователей через API
+    const fetchUsers = async () => {
+      try {
+        const response = await axios.get('http://217.114.10.226:5000/api/users');
+        setUsers(response.data);
+        // Фильтруем пользователей, у которых нет подразделения
+        setAvailableUsers(response.data.filter(user => !user.division || user.division === 'Нет'));
+      } catch (error) {
+        console.error('Error fetching users:', error.message);
+      }
+    };
+
+    fetchDivisions();
+    fetchUsers();
   }, []);
 
   const handleAddDivision = () => {
     setShowAddModal(true);
   };
 
-  const handleEditDivision = (division) => {
-    setEditDivision({ ...division, users: [] }); // Пока заглушка для пользователей
-    setShowEditModal(true);
+  const handleEditDivision = async (division) => {
+    try {
+      // Получаем пользователей, привязанных к подразделению
+      const response = await axios.get('http://217.114.10.226:5000/api/users');
+      const divisionUsers = response.data
+        .filter(user => user.division !== 'Нет' && user.division === division.name)
+        .map(user => user.id.toString());
+      setEditDivision({ ...division, users: divisionUsers });
+      setShowEditModal(true);
+    } catch (error) {
+      console.error('Error fetching division users:', error.message);
+      setEditDivision({ ...division, users: [] });
+      setShowEditModal(true);
+    }
   };
 
   const handleDeleteDivision = (division) => {
@@ -30,10 +64,19 @@ function DivisionsPage() {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    setDivisions(divisions.filter(division => division.id !== divisionToDelete.id));
-    setShowDeleteModal(false);
-    setDivisionToDelete(null);
+  const confirmDelete = async () => {
+    try {
+      await axios.delete(`http://217.114.10.226:5000/api/divisions/${divisionToDelete.id}`);
+      setDivisions(divisions.filter(division => division.id !== divisionToDelete.id));
+      // Обновляем список доступных пользователей после удаления подразделения
+      const response = await axios.get('http://217.114.10.226:5000/api/users');
+      setUsers(response.data);
+      setAvailableUsers(response.data.filter(user => !user.division || user.division === 'Нет'));
+      setShowDeleteModal(false);
+      setDivisionToDelete(null);
+    } catch (error) {
+      console.error('Error deleting division:', error.message);
+    }
   };
 
   const cancelDelete = () => {
@@ -51,15 +94,39 @@ function DivisionsPage() {
     }
   };
 
-  const handleModalApply = (type) => {
+  const handleModalApply = async (type) => {
     if (type === 'add') {
-      console.log('Adding division:', newDivision);
-      setDivisions([...divisions, { ...newDivision, id: divisions.length + 1, userCount: newDivision.users.length }]);
-      handleModalClose('add');
+      try {
+        const response = await axios.post('http://217.114.10.226:5000/api/divisions', { name: newDivision.name });
+        setDivisions([...divisions, { ...response.data, userCount: newDivision.users.length }]);
+        // Назначить пользователей подразделению
+        await Promise.all(newDivision.users.map(userId =>
+          axios.put(`http://217.114.10.226:5000/api/users/${userId}`, { divisionId: response.data.id })
+        ));
+        // Обновляем список доступных пользователей
+        const userResponse = await axios.get('http://217.114.10.226:5000/api/users');
+        setUsers(userResponse.data);
+        setAvailableUsers(userResponse.data.filter(user => !user.division || user.division === 'Нет'));
+        handleModalClose('add');
+      } catch (error) {
+        console.error('Error adding division:', error.message);
+      }
     } else if (type === 'edit') {
-      console.log('Editing division:', editDivision);
-      setDivisions(divisions.map(division => division.id === editDivision.id ? { ...editDivision, userCount: editDivision.users.length } : division));
-      handleModalClose('edit');
+      try {
+        const response = await axios.put(`http://217.114.10.226:5000/api/divisions/${editDivision.id}`, { name: editDivision.name });
+        setDivisions(divisions.map(division => (division.id === editDivision.id ? { ...response.data, userCount: editDivision.users.length } : division)));
+        // Назначить пользователей подразделению
+        await Promise.all(editDivision.users.map(userId =>
+          axios.put(`http://217.114.10.226:5000/api/users/${userId}`, { divisionId: editDivision.id })
+        ));
+        // Обновляем список доступных пользователей
+        const userResponse = await axios.get('http://217.114.10.226:5000/api/users');
+        setUsers(userResponse.data);
+        setAvailableUsers(userResponse.data.filter(user => !user.division || user.division === 'Нет'));
+        handleModalClose('edit');
+      } catch (error) {
+        console.error('Error editing division:', error.message);
+      }
     }
   };
 
@@ -74,17 +141,31 @@ function DivisionsPage() {
 
   const handleUserAdd = (userId, type) => {
     if (type === 'add') {
-      setNewDivision({ ...newDivision, users: [...newDivision.users, userId] });
+      if (!newDivision.users.includes(userId)) {
+        setNewDivision({ ...newDivision, users: [...newDivision.users, userId] });
+      }
     } else if (type === 'edit') {
-      setEditDivision({ ...editDivision, users: [...editDivision.users, userId] });
+      if (!editDivision.users.includes(userId)) {
+        setEditDivision({ ...editDivision, users: [...editDivision.users, userId] });
+      }
     }
   };
 
-  const handleUserRemove = (userId, type) => {
-    if (type === 'add') {
-      setNewDivision({ ...newDivision, users: newDivision.users.filter(id => id !== userId) });
-    } else if (type === 'edit') {
-      setEditDivision({ ...editDivision, users: editDivision.users.filter(id => id !== userId) });
+  const handleUserRemove = async (userId, type) => {
+    try {
+      // Отвязываем пользователя от подразделения
+      await axios.put(`http://217.114.10.226:5000/api/users/${userId}`, { divisionId: null });
+      if (type === 'add') {
+        setNewDivision({ ...newDivision, users: newDivision.users.filter(id => id !== userId) });
+      } else if (type === 'edit') {
+        setEditDivision({ ...editDivision, users: editDivision.users.filter(id => id !== userId) });
+      }
+      // Обновляем список доступных пользователей
+      const userResponse = await axios.get('http://217.114.10.226:5000/api/users');
+      setUsers(userResponse.data);
+      setAvailableUsers(userResponse.data.filter(user => !user.division || user.division === 'Нет'));
+    } catch (error) {
+      console.error('Error unassigning user:', error.message);
     }
   };
 
@@ -129,8 +210,9 @@ function DivisionsPage() {
               <label>Добавить пользователя</label>
               <select onChange={(e) => handleUserAdd(e.target.value, 'add')}>
                 <option value="">Выберите пользователя</option>
-                <option value="1">Иванов И.И.</option>
-                <option value="2">Петров П.П.</option>
+                {availableUsers.map(user => (
+                  <option key={user.id} value={user.id}>{user.name}</option>
+                ))}
               </select>
             </div>
             <table className="users-table">
@@ -142,15 +224,18 @@ function DivisionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {newDivision.users.map(userId => (
-                  <tr key={userId}>
-                    <td>{userId === '1' ? 'Иванов И.И.' : 'Петров П.П.'}</td>
-                    <td>{userId === '1' ? 'ivanov@example.com' : 'petrov@example.com'}</td>
-                    <td>
-                      <button onClick={() => handleUserRemove(userId, 'add')}>⛓️‍💥</button>
-                    </td>
-                  </tr>
-                ))}
+                {newDivision.users.map(userId => {
+                  const user = users.find(u => u.id === parseInt(userId));
+                  return (
+                    <tr key={userId}>
+                      <td>{user?.name || 'Неизвестный'}</td>
+                      <td>{user?.email || 'Неизвестный'}</td>
+                      <td>
+                        <button onClick={() => handleUserRemove(userId, 'add')}>⛓️‍💥</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             <button onClick={() => handleModalApply('add')}>Применить</button>
@@ -176,8 +261,9 @@ function DivisionsPage() {
               <label>Добавить пользователя</label>
               <select onChange={(e) => handleUserAdd(e.target.value, 'edit')}>
                 <option value="">Выберите пользователя</option>
-                <option value="1">Иванов И.И.</option>
-                <option value="2">Петров П.П.</option>
+                {availableUsers.map(user => (
+                  <option key={user.id} value={user.id}>{user.name}</option>
+                ))}
               </select>
             </div>
             <table className="users-table">
@@ -189,15 +275,18 @@ function DivisionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {editDivision.users.map(userId => (
-                  <tr key={userId}>
-                    <td>{userId === '1' ? 'Иванов И.И.' : 'Петров П.П.'}</td>
-                    <td>{userId === '1' ? 'ivanov@example.com' : 'petrov@example.com'}</td>
-                    <td>
-                      <button onClick={() => handleUserRemove(userId, 'edit')}>⛓️‍💥</button>
-                    </td>
-                  </tr>
-                ))}
+                {editDivision.users.map(userId => {
+                  const user = users.find(u => u.id === parseInt(userId));
+                  return (
+                    <tr key={userId}>
+                      <td>{user?.name || 'Неизвестный'}</td>
+                      <td>{user?.email || 'Неизвестный'}</td>
+                      <td>
+                        <button onClick={() => handleUserRemove(userId, 'edit')}>⛓️‍💥</button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             <button onClick={() => handleModalApply('edit')}>Применить</button>

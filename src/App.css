@@ -333,7 +333,7 @@ button:hover {
   color: #555;
 }
 
-.meetings-table tr:hover {
+.meetings-table:not(.control-meetings-table) tr:hover {
   background-color: #f9f9f9;
 }
 
@@ -759,3 +759,16 @@ button:hover {
   background-color: #34c759;
   color: white;
 }
+
+
+/* Стили для строк таблицы в зависимости от статуса заседания */
+.completed-meeting {
+  background-color: #ffcc99; /* Оранжево-серая заливка для COMPLETED */
+  color: #666; /* Серый текст */
+}
+
+.in-progress-meeting {
+  background-color: #ccffcc; /* Зелёная заливка для IN_PROGRESS */
+  color: #333; /* Тёмный текст для читаемости */
+}
+

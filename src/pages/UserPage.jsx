@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import io from 'socket.io-client';
+import axios from 'axios';
 
 function UsersPage({ user, onLogout }) {
   const [meetings, setMeetings] = useState([]);
@@ -11,123 +12,262 @@ function UsersPage({ user, onLogout }) {
   const [timeLeft, setTimeLeft] = useState(null);
   const [selectedChoice, setSelectedChoice] = useState(null);
   const [currentAgendaItem, setCurrentAgendaItem] = useState(null);
+  const [socketError, setSocketError] = useState(null);
 
+  const socketRef = useRef(null);
+
+  // Загрузка данных о заседаниях и проверка активного голосования
+  const fetchMeetings = async () => {
+    try {
+      const response = await axios.get('http://217.114.10.226:5000/api/meetings/active-for-user', {
+        params: { email: user.email },
+      });
+      const userMeetings = response.data;
+
+      console.log('User meetings:', userMeetings);
+
+      const active = userMeetings.find(meeting => meeting.status === 'IN_PROGRESS');
+      console.log('Active meeting:', active);
+
+      if (active) {
+        setActiveMeeting(active);
+
+        const latestVoteResult = await axios.get('http://217.114.10.226:5000/api/vote-results', {
+          params: { meetingId: active.id },
+        });
+        console.log('Latest vote results:', latestVoteResult.data);
+        const activeVote = latestVoteResult.data.find(vr => vr.voteStatus === 'PENDING' || vr.voteStatus === 'ENDED');
+
+        if (activeVote) {
+          if (activeVote.voteStatus === 'PENDING') {
+            setVote(activeVote);
+            setTimeLeft(activeVote.duration);
+            setVoteResults(null);
+            const agendaItem = active.agendaItems.find(item => item.id === activeVote.agendaItemId);
+            setCurrentAgendaItem(agendaItem || null);
+          } else if (activeVote.voteStatus === 'ENDED') {
+            setVote(activeVote);
+            setTimeLeft(null);
+            setVoteResults({
+              question: activeVote.question,
+              votesFor: activeVote.votesFor,
+              votesAgainst: activeVote.votesAgainst,
+              votesAbstain: activeVote.votesAbstain,
+              votesNotVoted: activeVote.votesAbsent,
+            });
+            setCurrentAgendaItem(null);
+          } else {
+            setVote(null);
+            setVoteResults(null);
+            setTimeLeft(null);
+            setSelectedChoice(null);
+            setCurrentAgendaItem(null);
+          }
+        } else {
+          setVote(null);
+          setVoteResults(null);
+          setTimeLeft(null);
+          setSelectedChoice(null);
+          setCurrentAgendaItem(null);
+        }
+      } else {
+        setActiveMeeting(null);
+        setVote(null);
+        setVoteResults(null);
+        setTimeLeft(null);
+        setSelectedChoice(null);
+        setCurrentAgendaItem(null);
+        const upcoming = userMeetings
+          .filter(meeting => meeting.status === 'WAITING')
+          .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))[0];
+        setNearestMeeting(upcoming);
+      }
+
+      setMeetings(userMeetings);
+    } catch (error) {
+      console.error('Error fetching active meetings for user:', error.message);
+    }
+  };
+
+  // Вызываем fetchMeetings при загрузке страницы
   useEffect(() => {
-    const socket = io('http://217.114.10.226:5000');
-    
-    socket.on('new-vote-result', (voteData) => {
-      setVote(voteData);
-      setTimeLeft(Math.floor((new Date(voteData.createdAt).getTime() + voteData.duration - Date.now()) / 1000));
-      setSelectedChoice(null);
-      setVoteResults(null);
-      // Найдём текущий вопрос повестки, который соответствует голосованию
-      const agendaItem = activeMeeting?.agendaItems.find(item => item.title === voteData.question);
-      setCurrentAgendaItem(agendaItem || null);
+    console.log('Fetching meetings on page load');
+    if (user && user.email) {
+      fetchMeetings();
+    } else {
+      console.log('User or user.email not defined on page load');
+    }
+  }, []); // Пустые зависимости — вызывается только при монтировании
+
+  // Инициализация Socket.IO с помощью useRef и useEffect
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
+    socketRef.current = io(`${protocol}://217.114.10.226:5000`, {
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 3000,
+      reconnectionDelayMax: 5000,
     });
 
-    socket.on('vote-ended', () => {
-      setVote(null);
-      setTimeLeft(null);
-      setSelectedChoice(null);
-      setVoteResults(null);
-      setCurrentAgendaItem(null);
+    const socket = socketRef.current;
+
+    socket.on('connect', () => {
+      console.log('Successfully connected to Socket.IO server at', new Date().toISOString());
+      setSocketError(null);
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('Socket.IO connection error at', new Date().toISOString(), error.message);
+      setSocketError('Не удалось подключиться к серверу голосования. Пытаемся переподключиться...');
+    });
+
+    socket.on('connect_timeout', () => {
+      console.log('Socket.IO connection timeout at', new Date().toISOString());
+    });
+
+    socket.on('reconnect_attempt', (attempt) => {
+      console.log('Reconnection attempt #', attempt, 'at', new Date().toISOString());
+    });
+
+    socket.on('disconnect', (reason) => {
+      console.log('Socket.IO disconnected:', reason);
+      if (reason === 'io server disconnect' || reason === 'transport close') {
+        socket.connect();
+      }
+    });
+
+    socket.on('meeting-status-changed', () => {
+      console.log('Meeting status changed, refreshing meetings at', new Date().toISOString());
+      fetchMeetings();
+    });
+
+    socket.on('new-vote-result', (voteData) => {
+      console.log('Received new-vote-result at', new Date().toISOString(), voteData);
+      if (voteData.voteStatus === 'PENDING') {
+        setVote(voteData);
+        setTimeLeft(voteData.duration);
+        setVoteResults(null);
+        const agendaItem = activeMeeting?.agendaItems.find(item => item.id === voteData.agendaItemId);
+        setCurrentAgendaItem(agendaItem || null);
+      }
+      fetchMeetings();
+    });
+
+    socket.on('vote-ended', (finalVoteResult) => {
+      console.log('Vote ended at', new Date().toISOString(), finalVoteResult);
+      if (finalVoteResult.voteStatus === 'ENDED') {
+        setVote(finalVoteResult);
+        setVoteResults({
+          question: finalVoteResult.question,
+          votesFor: finalVoteResult.votesFor,
+          votesAgainst: finalVoteResult.votesAgainst,
+          votesAbstain: finalVoteResult.votesAbstain,
+          votesNotVoted: finalVoteResult.votesAbsent,
+        });
+        setTimeLeft(null);
+        setSelectedChoice(null);
+        setCurrentAgendaItem(null);
+      }
+      fetchMeetings();
     });
 
     socket.on('vote-applied', () => {
-      // Автоматическое закрытие модального окна, когда админ нажимает "Применить"
+      console.log('Vote applied received at', new Date().toISOString());
       setVoteResults(null);
+      setVote(null);
+      setTimeLeft(null);
+      setSelectedChoice(null);
+      setCurrentAgendaItem(null);
+      fetchMeetings();
+      // Резервный вызов fetchMeetings через 2 секунды
+      setTimeout(() => {
+        fetchMeetings();
+      }, 2000);
+    });
+
+    socket.on('vote-cancelled', () => {
+      console.log('Vote cancelled received at', new Date().toISOString());
+      setVoteResults(null);
+      setVote(null);
+      setTimeLeft(null);
+      setSelectedChoice(null);
+      setCurrentAgendaItem(null);
+      fetchMeetings();
     });
 
     socket.on('meeting-ended', () => {
-      // Обновляем статус заседания
+      console.log('Meeting ended at', new Date().toISOString());
       setMeetings(prevMeetings =>
         prevMeetings.map(meeting =>
           meeting.id === activeMeeting?.id ? { ...meeting, status: 'COMPLETED' } : meeting
         )
       );
       setActiveMeeting(null);
+      setVote(null);
+      setVoteResults(null);
+      setTimeLeft(null);
+      setSelectedChoice(null);
+      setCurrentAgendaItem(null);
     });
 
     return () => {
-      socket.disconnect();
+      socketRef.current.disconnect();
+      console.log('Socket.IO disconnected on cleanup');
     };
-  }, [activeMeeting]);
+  }, []); // Пустые зависимости — создаём соединение один раз
 
+  // Визуальный обратный отсчёт
   useEffect(() => {
     let timer;
-    if (timeLeft > 0) {
-      timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-    } else if (timeLeft === 0) {
-      // Имитация результатов голосования
-      setVoteResults({
-        question: vote.question,
-        votesFor: 15,
-        votesAgainst: 5,
-        votesAbstain: 6,
-        votesNotVoted: 7,
-      });
-      setTimeLeft(null);
+    if (timeLeft !== null && timeLeft > 0) {
+      timer = setTimeout(() => {
+        const newTimeLeft = timeLeft - 1;
+        setTimeLeft(newTimeLeft);
+        if (newTimeLeft <= 0) {
+          const fetchResults = async () => {
+            try {
+              const response = await axios.get(`http://217.114.10.226:5000/api/vote-results/${vote.agendaItemId}`);
+              if (response.data.voteStatus === 'ENDED') {
+                setVoteResults({
+                  question: response.data.question,
+                  votesFor: response.data.votesFor,
+                  votesAgainst: response.data.votesAgainst,
+                  votesAbstain: response.data.votesAbstain,
+                  votesNotVoted: response.data.votesAbsent,
+                });
+                setVote({ ...vote, voteStatus: 'ENDED' });
+              } else if (response.data.voteStatus === 'APPLIED' || response.data.voteStatus === 'CANCELLED') {
+                setVoteResults(null);
+                setVote(null);
+                setTimeLeft(null);
+                setSelectedChoice(null);
+                setCurrentAgendaItem(null);
+                fetchMeetings();
+              }
+            } catch (error) {
+              console.error('Error fetching vote results:', error.message);
+            }
+          };
+          fetchResults();
+        }
+      }, 1000);
     }
     return () => clearTimeout(timer);
   }, [timeLeft, vote]);
 
-  useEffect(() => {
-    // Заглушка для загрузки заседаний
-    const allMeetings = [
-      {
-        id: 1,
-        name: 'Заседание 1',
-        startTime: '2025-05-20T10:00:00',
-        endTime: '2025-05-20T12:00:00',
-        status: 'IN_PROGRESS',
-        agendaItems: [
-          { number: 1, title: 'Вопрос повестки 1', speaker: 'Иванов И.И.', documentLink: 'https://example.com/doc1' },
-          { number: 2, title: 'Вопрос повестки 2', speaker: 'Петров П.П.', documentLink: 'https://example.com/doc2' },
-          { number: 3, title: 'Вопрос повестки 3', speaker: 'Сидоров М.Р.', documentLink: 'https://example.com/doc3' },
-          { number: 4, title: 'Вопрос повестки 4', speaker: 'Корвова А.Б.', documentLink: 'https://example.com/doc4' },
-        ],
-        participantsOnline: 38,
-        participantsTotal: 40,
-        participants: [
-          'Иванов Ф.О.', 'Петров И.Г.', 'Сидоров М.Р.', 'korvova', 'Смирнов А.В.', 'Козлов Д.Е.',
-          'Михайлов И.П.', 'Новикова Е.С.', 'Фёдоров Г.А.', 'Морозова О.Н.', 'Васильев С.В.',
-          'Попова Л.И.', 'Соколов М.Д.', 'Кузнецова Т.В.', 'Романов Е.В.'
-        ],
-      },
-      {
-        id: 2,
-        name: 'Заседание 2',
-        startTime: '2025-05-20T13:40:00',
-        endTime: '2025-05-20T15:40:00',
-        status: 'WAITING',
-      },
-    ];
-
-    // Проверяем, участвует ли пользователь в заседаниях
-    const userMeetings = allMeetings.filter(meeting => 
-      meeting.participants && meeting.participants.some(participant => participant.includes(user.email.split('@')[0]))
-    );
-
-    const active = userMeetings.find(meeting => meeting.status === 'IN_PROGRESS');
-    setActiveMeeting(active);
-
-    if (!active) {
-      const upcoming = userMeetings
-        .filter(meeting => meeting.status === 'WAITING')
-        .sort((a, b) => new Date(a.startTime) - new Date(b.startTime))[0];
-      setNearestMeeting(upcoming);
-    }
-
-    setMeetings(userMeetings);
-  }, [user.email]);
-
-  const handleVote = (choice) => {
+  const handleVote = async (choice) => {
     setSelectedChoice(choice);
-    console.log('User voted:', choice);
-  };
-
-  const handleVoteResultsClose = () => {
-    setVoteResults(null);
+    try {
+      await axios.post('http://217.114.10.226:5000/api/vote', {
+        userId: user.email,
+        agendaItemId: vote.agendaItemId,
+        choice,
+      });
+      console.log('User voted:', choice);
+    } catch (error) {
+      console.error('Error submitting vote:', error.message);
+    }
   };
 
   return (
@@ -141,42 +281,60 @@ function UsersPage({ user, onLogout }) {
         </div>
       </header>
       <div className="content">
+        {socketError && (
+          <div className="error-message">
+            <p>{socketError}</p>
+          </div>
+        )}
         {activeMeeting ? (
           <div className="meeting-container">
             <div className="agenda-section">
               <h1>{activeMeeting.name}</h1>
               <h2>Вопросы повестки:</h2>
-              <table className="agenda-items-table">
-                <thead>
-                  <tr>
-                    <th>Номер</th>
-                    <th>Вопрос</th>
-                    <th>Докладчик</th>
-                    <th>Ссылка на документ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activeMeeting.agendaItems.map(item => (
-                    <tr key={item.number} className={currentAgendaItem && currentAgendaItem.number === item.number ? 'active-agenda-item' : ''}>
-                      <td>{item.number}</td>
-                      <td>{item.title}</td>
-                      <td>{item.speaker}</td>
-                      <td>
-                        <a href={item.documentLink} target="_blank" rel="noopener noreferrer">Документ</a>
-                      </td>
+              {activeMeeting.agendaItems && activeMeeting.agendaItems.length > 0 ? (
+                <table className="agenda-items-table">
+                  <thead>
+                    <tr>
+                      <th>Номер</th>
+                      <th>Вопрос</th>
+                      <th>Докладчик</th>
+                      <th>Ссылка на документ</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {activeMeeting.agendaItems.map(item => (
+                      <tr
+                        key={item.number}
+                        className={
+                          item.voting
+                            ? 'voting-active'
+                            : item.completed
+                            ? 'voting-completed'
+                            : currentAgendaItem && currentAgendaItem.number === item.number
+                            ? 'active-agenda-item'
+                            : ''
+                        }
+                      >
+                        <td>{item.number}</td>
+                        <td>{item.title}</td>
+                        <td>{item.speaker}</td>
+                        <td>
+                          <a href={item.link || '#'} target="_blank" rel="noopener noreferrer">Документ</a>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p>Вопросы повестки отсутствуют.</p>
+              )}
             </div>
             <div className="participants-section">
               <div className="participants-block">
                 <p>{activeMeeting.participantsOnline}/{activeMeeting.participantsTotal} участников</p>
                 <h3>Список участников:</h3>
                 <ul className="participants-list">
-                  {activeMeeting.participants.map((participant, index) => (
-                    <li key={index}>{participant}</li>
-                  ))}
+                  <li>Участники не загружены</li>
                 </ul>
               </div>
             </div>
@@ -193,48 +351,52 @@ function UsersPage({ user, onLogout }) {
         )}
       </div>
 
-      {vote && timeLeft !== null && !voteResults && (
+      {vote && (
         <div className="modal">
           <div className="modal-content">
             <h3>{vote.question}</h3>
-            <p>Осталось времени: {timeLeft} сек</p>
-            <div className="vote-buttons">
-              <button
-                className={selectedChoice === 'FOR' ? 'vote-button-selected' : 'vote-button'}
-                onClick={() => handleVote('FOR')}
-                disabled={selectedChoice !== null}
-              >
-                За
-              </button>
-              <button
-                className={selectedChoice === 'AGAINST' ? 'vote-button-selected' : 'vote-button'}
-                onClick={() => handleVote('AGAINST')}
-                disabled={selectedChoice !== null}
-              >
-                Против
-              </button>
-              <button
-                className={selectedChoice === 'ABSTAIN' ? 'vote-button-selected' : 'vote-button'}
-                onClick={() => handleVote('ABSTAIN')}
-                disabled={selectedChoice !== null}
-              >
-                Воздержусь
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {voteResults && (
-        <div className="modal">
-          <div className="modal-content">
-            <h3>Итоги голосования</h3>
-            <p>Название вопроса: {voteResults.question}</p>
-            <p>За: {voteResults.votesFor}</p>
-            <p>Против: {voteResults.votesAgainst}</p>
-            <p>Воздержались: {voteResults.votesAbstain}</p>
-            <p>Не голосовали: {voteResults.votesNotVoted}</p>
-            <button onClick={handleVoteResultsClose}>Закрыть</button>
+            {vote.voteStatus === 'PENDING' && (
+              <>
+                {timeLeft !== null && timeLeft >= 0 ? (
+                  <p>Осталось времени: {timeLeft} сек</p>
+                ) : (
+                  <p>Осталось времени: 0 сек</p>
+                )}
+                <div className="vote-buttons">
+                  <button
+                    className={selectedChoice === 'FOR' ? 'vote-button-selected' : 'vote-button'}
+                    onClick={() => handleVote('FOR')}
+                    disabled={selectedChoice !== null}
+                  >
+                    За
+                  </button>
+                  <button
+                    className={selectedChoice === 'AGAINST' ? 'vote-button-selected' : 'vote-button'}
+                    onClick={() => handleVote('AGAINST')}
+                    disabled={selectedChoice !== null}
+                  >
+                    Против
+                  </button>
+                  <button
+                    className={selectedChoice === 'ABSTAIN' ? 'vote-button-selected' : 'vote-button'}
+                    onClick={() => handleVote('ABSTAIN')}
+                    disabled={selectedChoice !== null}
+                  >
+                    Воздержусь
+                  </button>
+                </div>
+              </>
+            )}
+            {voteResults && vote.voteStatus === 'ENDED' && (
+              <>
+                <h3>Итоги голосования</h3>
+                <p>Название вопроса: {voteResults.question}</p>
+                <p>За: {voteResults.votesFor}</p>
+                <p>Против: {voteResults.votesAgainst}</p>
+                <p>Воздержались: {voteResults.votesAbstain}</p>
+                <p>Не голосовали: {voteResults.votesNotVoted}</p>
+              </>
+            )}
           </div>
         </div>
       )}

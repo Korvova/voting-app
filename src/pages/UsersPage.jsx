@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
+import axios from 'axios';
 
 function UsersPage() {
   const [users, setUsers] = useState([]);
+  const [divisions, setDivisions] = useState([]); // Состояние для списка подразделений
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -10,10 +12,28 @@ function UsersPage() {
   const [newUser, setNewUser] = useState({ name: '', email: '', phone: '', divisionId: '', password: '' });
 
   useEffect(() => {
-    // Заглушка для загрузки пользователей
-    setUsers([
-      { id: 1, name: 'Иванов И.И.', email: 'ivanov@example.com', phone: '+79991234567', division: 'Отдел 1' },
-    ]);
+    // Получение списка пользователей через API
+    const fetchUsers = async () => {
+      try {
+        const response = await axios.get('http://217.114.10.226:5000/api/users');
+        setUsers(response.data);
+      } catch (error) {
+        console.error('Error fetching users:', error.message);
+      }
+    };
+
+    // Получение списка подразделений через API
+    const fetchDivisions = async () => {
+      try {
+        const response = await axios.get('http://217.114.10.226:5000/api/divisions');
+        setDivisions(response.data);
+      } catch (error) {
+        console.error('Error fetching divisions:', error.message);
+      }
+    };
+
+    fetchUsers();
+    fetchDivisions();
   }, []);
 
   const handleAddUser = () => {
@@ -30,10 +50,15 @@ function UsersPage() {
     setShowDeleteModal(true);
   };
 
-  const confirmDelete = () => {
-    setUsers(users.filter(user => user.id !== userToDelete.id));
-    setShowDeleteModal(false);
-    setUserToDelete(null);
+  const confirmDelete = async () => {
+    try {
+      await axios.delete(`http://217.114.10.226:5000/api/users/${userToDelete.id}`);
+      setUsers(users.filter(user => user.id !== userToDelete.id));
+      setShowDeleteModal(false);
+      setUserToDelete(null);
+    } catch (error) {
+      console.error('Error deleting user:', error.message);
+    }
   };
 
   const cancelDelete = () => {
@@ -51,15 +76,29 @@ function UsersPage() {
     }
   };
 
-  const handleModalApply = (type) => {
+  const handleModalApply = async (type) => {
     if (type === 'add') {
-      console.log('Adding user:', newUser);
-      setUsers([...users, { ...newUser, id: users.length + 1, division: newUser.divisionId || 'Нет' }]);
-      handleModalClose('add');
+      try {
+        const response = await axios.post('http://217.114.10.226:5000/api/users', {
+          ...newUser,
+          divisionId: newUser.divisionId ? parseInt(newUser.divisionId) : null,
+        });
+        setUsers([...users, { ...response.data, division: newUser.divisionId ? divisions.find(d => d.id === parseInt(newUser.divisionId))?.name : 'Нет' }]);
+        handleModalClose('add');
+      } catch (error) {
+        console.error('Error adding user:', error.message);
+      }
     } else if (type === 'edit') {
-      console.log('Editing user:', editUser);
-      setUsers(users.map(user => (user.id === editUser.id ? { ...editUser, division: editUser.divisionId || 'Нет' } : user)));
-      handleModalClose('edit');
+      try {
+        const response = await axios.put(`http://217.114.10.226:5000/api/users/${editUser.id}`, {
+          ...editUser,
+          divisionId: editUser.divisionId ? parseInt(editUser.divisionId) : null,
+        });
+        setUsers(users.map(user => (user.id === editUser.id ? { ...response.data, division: editUser.divisionId ? divisions.find(d => d.id === parseInt(editUser.divisionId))?.name : 'Нет' } : user)));
+        handleModalClose('edit');
+      } catch (error) {
+        console.error('Error editing user:', error.message);
+      }
     }
   };
 
@@ -134,11 +173,18 @@ function UsersPage() {
             </div>
             <div className="form-group">
               <label>Подразделение</label>
-              <input
+              <select
                 name="divisionId"
                 value={newUser.divisionId}
                 onChange={(e) => handleInputChange(e, 'add')}
-              />
+              >
+                <option value="">Без подразделения</option>
+                {divisions.map(division => (
+                  <option key={division.id} value={division.id}>
+                    {division.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="form-group">
               <label>Пароль *</label>
@@ -190,11 +236,18 @@ function UsersPage() {
             </div>
             <div className="form-group">
               <label>Подразделение</label>
-              <input
+              <select
                 name="divisionId"
-                value={editUser.divisionId}
+                value={editUser.divisionId || ''}
                 onChange={(e) => handleInputChange(e, 'edit')}
-              />
+              >
+                <option value="">Без подразделения</option>
+                {divisions.map(division => (
+                  <option key={division.id} value={division.id}>
+                    {division.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="form-group">
               <label>Пароль *</label>

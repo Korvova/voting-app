@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import io from 'socket.io-client';
+import axios from 'axios';
 
 function MeetingControl() {
   const { id } = useParams();
@@ -11,55 +12,180 @@ function MeetingControl() {
   const [voteData, setVoteData] = useState({ question: '', duration: '' });
   const [activeVote, setActiveVote] = useState(null);
   const [voteResults, setVoteResults] = useState(null);
+  const [voteResultsError, setVoteResultsError] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
   const socket = io('http://217.114.10.226:5000');
 
+  // Загрузка данных о заседании
   useEffect(() => {
-    // Заглушка для загрузки данных заседания
-    setMeeting({
-      id: parseInt(id),
-      name: 'Заседание 1',
-      participantsOnline: 30,
-      participantsTotal: 36,
-      agendaItems: [
-        { id: 1, number: 1, title: 'Вопрос повестки 1', speaker: 'Иванов И.И.', votes: [], voting: false, completed: false },
-        { id: 2, number: 2, title: 'Вопрос повестки 2', speaker: 'Петров П.П.', votes: [], voting: false, completed: false },
-      ],
-    });
+    const fetchMeeting = async () => {
+      try {
+        const response = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}`);
+        const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
+        setMeeting({
+          ...response.data,
+          agendaItems: agendaResponse.data.map(item => ({
+            id: item.id,
+            number: item.number,
+            title: item.title,
+            speaker: item.speaker,
+            votes: [],
+            voting: item.voting,
+            completed: item.completed,
+          })),
+        });
+        setStatus(response.data.status);
+      } catch (error) {
+        console.error('Error fetching meeting:', error.message);
+      }
+    };
+
+    fetchMeeting();
 
     return () => {
       socket.disconnect();
     };
   }, [id]);
 
+  // Подписка на события Socket.IO
+  useEffect(() => {
+    socket.on('new-vote-result', (voteData) => {
+      console.log('Received new-vote-result:', voteData);
+      setTimeLeft(voteData.duration);
+      const fetchMeeting = async () => {
+        try {
+          const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
+          setMeeting(prev => ({
+            ...prev,
+            agendaItems: agendaResponse.data.map(item => ({
+              id: item.id,
+              number: item.number,
+              title: item.title,
+              speaker: item.speaker,
+              votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
+              voting: item.voting,
+              completed: item.completed,
+            })),
+          }));
+        } catch (error) {
+          console.error('Error fetching meeting:', error.message);
+        }
+      };
+      fetchMeeting();
+    });
+
+    socket.on('vote-ended', async () => {
+      console.log('Vote ended');
+      setTimeLeft(null);
+      if (activeVote) {
+        try {
+          const response = await axios.get(`http://217.114.10.226:5000/api/vote-results/${activeVote.id}`);
+          setVoteResults({
+            id: response.data.id,
+            question: response.data.question,
+            votesFor: response.data.votesFor,
+            votesAgainst: response.data.votesAgainst,
+            votesAbstain: response.data.votesAbstain,
+            votesAbsent: response.data.votesAbsent,
+          });
+          setVoteResultsError(null);
+          // Обновляем состояние повестки
+          const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
+          setMeeting(prev => ({
+            ...prev,
+            agendaItems: agendaResponse.data.map(item => ({
+              id: item.id,
+              number: item.number,
+              title: item.title,
+              speaker: item.speaker,
+              votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
+              voting: item.voting,
+              completed: item.completed,
+            })),
+          }));
+        } catch (error) {
+          console.error('Error fetching vote results:', error.message);
+          setVoteResultsError('Не удалось загрузить результаты голосования');
+        }
+      }
+    });
+
+    socket.on('vote-applied', () => {
+      console.log('Vote applied');
+      setVoteResults(null);
+      setActiveVote(null);
+      setVoteResultsError(null);
+      const fetchMeeting = async () => {
+        try {
+          const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
+          setMeeting(prev => ({
+            ...prev,
+            agendaItems: agendaResponse.data.map(item => ({
+              id: item.id,
+              number: item.number,
+              title: item.title,
+              speaker: item.speaker,
+              votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
+              voting: item.voting,
+              completed: item.completed,
+            })),
+          }));
+        } catch (error) {
+          console.error('Error fetching meeting:', error.message);
+        }
+      };
+      fetchMeeting();
+    });
+
+    socket.on('meeting-ended', () => {
+      console.log('Meeting ended');
+      setStatus('COMPLETED');
+      setMeeting({
+        ...meeting,
+        agendaItems: meeting.agendaItems.map(item => ({
+          ...item,
+          voting: false,
+          completed: true,
+        })),
+      });
+    });
+
+    return () => {
+      socket.off('new-vote-result');
+      socket.off('vote-ended');
+      socket.off('vote-applied');
+      socket.off('meeting-ended');
+    };
+  }, [socket, activeVote, meeting, id]);
+
+  // Визуальный обратный отсчёт
   useEffect(() => {
     let timer;
-    if (timeLeft > 0) {
-      timer = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
-    } else if (timeLeft === 0) {
-      // Имитация результатов голосования
-      setVoteResults({
-        question: voteData.question,
-        votesFor: 25,
-        votesAgainst: 5,
-        votesAbstain: 6,
-        votesAbsent: 1,
-      });
-      setTimeLeft(null);
-      socket.emit('vote-ended');
+    if (timeLeft !== null && timeLeft > 0) {
+      timer = setTimeout(() => {
+        setTimeLeft(timeLeft - 1);
+      }, 1000);
     }
     return () => clearTimeout(timer);
-  }, [timeLeft, voteData.question, socket]);
+  }, [timeLeft]);
 
-  const handleStatusChange = () => {
-    if (status === 'WAITING') {
-      setStatus('IN_PROGRESS');
-    } else if (status === 'IN_PROGRESS') {
-      setStatus('COMPLETED');
-      socket.emit('meeting-ended');
+  // Изменение статуса заседания
+  const handleStatusChange = async () => {
+    try {
+      if (status === 'WAITING') {
+        await axios.post(`http://217.114.10.226:5000/api/meetings/${id}/status`, { status: 'IN_PROGRESS' });
+        setStatus('IN_PROGRESS');
+      } else if (status === 'IN_PROGRESS') {
+        await axios.post(`http://217.114.10.226:5000/api/meetings/${id}/status`, { status: 'COMPLETED' });
+        setStatus('COMPLETED');
+        socket.emit('meeting-ended');
+      }
+    } catch (error) {
+      console.error('Error changing meeting status:', error.message);
     }
   };
 
+  // Запуск голосования
   const handleStartVote = (agendaItem) => {
     if (status === 'WAITING') {
       setShowStartWarningModal(true);
@@ -67,78 +193,144 @@ function MeetingControl() {
     }
     setActiveVote(agendaItem);
     setShowVoteModal(true);
-    setMeeting({
-      ...meeting,
-      agendaItems: meeting.agendaItems.map(item =>
+    // Локально устанавливаем voting: true для немедленного отображения
+    setMeeting(prev => ({
+      ...prev,
+      agendaItems: prev.agendaItems.map(item =>
         item.id === agendaItem.id ? { ...item, voting: true } : item
       ),
-    });
+    }));
   };
 
-  const handleEndVote = (agendaItem) => {
+  // Завершение текущего вопроса повестки
+  const handleEndVote = async (agendaItem) => {
     setTimeLeft(null);
-    setVoteResults(null);
     setActiveVote(null);
-    setMeeting({
-      ...meeting,
-      agendaItems: meeting.agendaItems.map(item =>
+    setVoteResults(null);
+    socket.emit('vote-ended');
+    // Локально сбрасываем voting и устанавливаем completed
+    setMeeting(prev => ({
+      ...prev,
+      agendaItems: prev.agendaItems.map(item =>
         item.id === agendaItem.id ? { ...item, voting: false, completed: true } : item
       ),
-    });
-    socket.emit('vote-ended');
+    }));
   };
 
+  // Закрытие модального окна для запуска голосования
   const handleVoteModalClose = () => {
     setShowVoteModal(false);
     setVoteData({ question: '', duration: '' });
   };
 
-  const handleVoteModalApply = () => {
-    console.log('Starting vote:', voteData);
-    setTimeLeft(parseInt(voteData.duration));
-    socket.emit('new-vote-result', {
-      question: voteData.question,
-      duration: parseInt(voteData.duration) * 1000, // В миллисекундах
-      createdAt: new Date().toISOString(),
-    });
-    handleVoteModalClose();
+  // Запуск голосования (отправка события)
+  const handleVoteModalApply = async () => {
+    if (!activeVote || !activeVote.id) {
+      alert('Ошибка: не выбран вопрос повестки.');
+      return;
+    }
+    if (!voteData.question) {
+      alert('Пожалуйста, укажите вопрос голосования.');
+      return;
+    }
+    if (!voteData.duration || parseInt(voteData.duration) <= 0) {
+      alert('Пожалуйста, укажите время голосования (больше 0 секунд).');
+      return;
+    }
+    try {
+      const duration = parseInt(voteData.duration);
+      console.log('Sending start-vote request:', { agendaItemId: activeVote.id, question: voteData.question, duration });
+      await axios.post('http://217.114.10.226:5000/api/start-vote', {
+        agendaItemId: activeVote.id,
+        question: voteData.question,
+        duration: duration,
+      });
+      setTimeLeft(duration);
+      socket.emit('new-vote-result', {
+        agendaItemId: activeVote.id,
+        question: voteData.question,
+        duration: duration,
+        createdAt: new Date().toISOString(),
+      });
+      handleVoteModalClose();
+    } catch (error) {
+      console.error('Error starting vote:', error.message);
+    }
   };
 
-  const handleVoteResultsApply = () => {
-    setMeeting({
-      ...meeting,
-      agendaItems: meeting.agendaItems.map(item =>
-        item.id === activeVote.id
-          ? {
-              ...item,
-              votes: [
-                ...item.votes,
-                `${voteResults.question}, За - ${voteResults.votesFor}, Против - ${voteResults.votesAgainst}, Воздержались - ${voteResults.votesAbstain}, Не проголосовали - ${voteResults.votesAbsent}`
-              ],
-            }
-          : item
-      ),
-    });
+  // Применение результатов голосования
+  const handleVoteResultsApply = async () => {
+    try {
+      setMeeting({
+        ...meeting,
+        agendaItems: meeting.agendaItems.map(item =>
+          item.id === activeVote.id
+            ? {
+                ...item,
+                votes: [
+                  ...item.votes,
+                  `${voteResults.question}, За - ${voteResults.votesFor}, Против - ${voteResults.votesAgainst}, Воздержались - ${voteResults.votesAbstain}, Не проголосовали - ${voteResults.votesAbsent}`
+                ],
+              }
+            : item
+        ),
+      });
+      setVoteResults(null);
+      setActiveVote(null);
+      await axios.post(`http://217.114.10.226:5000/api/vote-results/${voteResults.id}/apply`);
+    } catch (error) {
+      console.error('Error applying vote results:', error.message);
+    }
+  };
+
+  // Отмена результатов голосования
+const handleVoteResultsCancel = async () => {
+  try {
+    if (voteResults && voteResults.id) {
+      await axios.post(`http://217.114.10.226:5000/api/vote-results/${voteResults.id}/cancel`);
+    }
     setVoteResults(null);
     setActiveVote(null);
-    socket.emit('vote-applied');
-  };
+    setVoteResultsError(null);
+    const fetchMeeting = async () => {
+      try {
+        const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
+        setMeeting(prev => ({
+          ...prev,
+          agendaItems: agendaResponse.data.map(item => ({
+            id: item.id,
+            number: item.number,
+            title: item.title,
+            speaker: item.speaker,
+            votes: prev.agendaItems.find(i => i.id === item.id)?.votes || [],
+            voting: item.voting,
+            completed: item.completed,
+          })),
+        }));
+      } catch (error) {
+        console.error('Error fetching meeting:', error.message);
+      }
+    };
+    fetchMeeting();
+  } catch (error) {
+    console.error('Error cancelling vote:', error.message);
+    setVoteResultsError('Не удалось отменить голосование');
+  }
+};
 
-  const handleVoteResultsCancel = () => {
-    setVoteResults(null);
-    setActiveVote(null);
-  };
-
+  // Обработка ввода данных для голосования
   const handleVoteInputChange = (e) => {
     const { name, value } = e.target;
     setVoteData({ ...voteData, [name]: value });
   };
 
+  // Запуск заседания из модального окна предупреждения
   const handleStartMeetingFromModal = () => {
     setStatus('IN_PROGRESS');
     setShowStartWarningModal(false);
   };
 
+  // Отмена предупреждения о запуске
   const handleCancelStartWarning = () => {
     setShowStartWarningModal(false);
   };
@@ -179,21 +371,23 @@ function MeetingControl() {
               <td className="vote-results-column">{item.votes.length > 0 ? item.votes.join('\n') : '-'}</td>
               <td className="action-column">
                 {!item.completed && (
-                  <button
-                    className={item.completed ? 'vote-button-completed' : 'vote-button'}
-                    onClick={() => handleStartVote(item)}
-                    disabled={status === 'COMPLETED' || item.completed}
-                  >
-                    ▷
-                  </button>
-                )}
-                {item.voting && (
-                  <button
-                    className="end-vote-button"
-                    onClick={() => handleEndVote(item)}
-                  >
-                    Завершить
-                  </button>
+                  <>
+                    <button
+                      className={item.completed ? 'vote-button-completed' : 'vote-button'}
+                      onClick={() => handleStartVote(item)}
+                      disabled={status === 'COMPLETED' || item.completed}
+                    >
+                      ▷
+                    </button>
+                    {item.voting && (
+                      <button
+                        className="end-vote-button"
+                        onClick={() => handleEndVote(item)}
+                      >
+                        Завершить
+                      </button>
+                    )}
+                  </>
                 )}
                 {item.completed && (
                   <span className="completed-text">
@@ -209,6 +403,12 @@ function MeetingControl() {
       {timeLeft !== null && (
         <div className="vote-timer">
           <p>Идёт голосование: Таймер обратного отсчёта: {timeLeft} сек</p>
+        </div>
+      )}
+
+      {voteResultsError && (
+        <div className="vote-results-error">
+          <p>{voteResultsError}</p>
         </div>
       )}
 
