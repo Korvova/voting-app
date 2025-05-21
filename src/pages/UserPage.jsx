@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, Outlet, useLocation } from 'react-router-dom';
 import io from 'socket.io-client';
 import axios from 'axios';
 
@@ -13,9 +13,19 @@ function UsersPage({ user, onLogout }) {
   const [selectedChoice, setSelectedChoice] = useState(null);
   const [currentAgendaItem, setCurrentAgendaItem] = useState(null);
   const [socketError, setSocketError] = useState(null);
-  const [participants, setParticipants] = useState([]); // Добавляем состояние для участников
+  const [participants, setParticipants] = useState([]);
 
   const socketRef = useRef(null);
+  const navigate = useNavigate();
+  const redirectingRef = useRef(false);
+  const location = useLocation();
+
+  // Сбрасываем redirectingRef.current при возвращении на /user
+  useEffect(() => {
+    if (location.pathname === '/user') {
+      redirectingRef.current = false; // Сбрасываем, чтобы редирект мог сработать снова
+    }
+  }, [location.pathname]);
 
   // Загрузка данных о заседаниях и проверка активного голосования
   const fetchMeetings = async () => {
@@ -23,43 +33,24 @@ function UsersPage({ user, onLogout }) {
       const response = await axios.get('http://217.114.10.226:5000/api/meetings/active-for-user', {
         params: { email: user.email },
       });
+
       const userMeetings = response.data.map(meeting => ({
         ...meeting,
-        agendaItems: meeting.agendaItems.sort((a, b) => a.number - b.number), // Сортировка по number
+        agendaItems: meeting.agendaItems.sort((a, b) => a.number - b.number),
       }));
 
-      console.log('User meetings:', userMeetings);
-      // Логирование agendaItems с activeIssue
-      userMeetings.forEach(meeting => {
-        console.log(`Meeting ${meeting.id} agendaItems:`, meeting.agendaItems.map(item => ({
-          id: item.id,
-          number: item.number,
-          title: item.title,
-          activeIssue: item.activeIssue,
-          completed: item.completed,
-        })));
-      });
-
-      // Логирование divisions с пользователями
-      console.log('Divisions with users:', userMeetings.map(meeting => ({
-        id: meeting.id,
-        divisions: meeting.divisions,
-      })));
-
       const active = userMeetings.find(meeting => meeting.status === 'IN_PROGRESS');
-      console.log('Active meeting:', active);
 
       if (active) {
         setActiveMeeting(active);
 
-        // Извлекаем всех пользователей из divisions
         const allParticipants = active.divisions.flatMap(division => division.users);
         setParticipants(allParticipants);
 
         const latestVoteResult = await axios.get('http://217.114.10.226:5000/api/vote-results', {
           params: { meetingId: active.id },
         });
-        console.log('Latest vote results:', latestVoteResult.data);
+
         const activeVote = latestVoteResult.data.find(vr => vr.voteStatus === 'PENDING' || vr.voteStatus === 'ENDED');
 
         if (activeVote) {
@@ -95,7 +86,6 @@ function UsersPage({ user, onLogout }) {
           setCurrentAgendaItem(null);
         }
       } else {
-        setActiveMeeting(null);
         setVote(null);
         setVoteResults(null);
         setTimeLeft(null);
@@ -109,17 +99,14 @@ function UsersPage({ user, onLogout }) {
 
       setMeetings(userMeetings);
     } catch (error) {
-      console.error('Error fetching active meetings for user:', error.message);
+      console.error('[fetchMeetings] Error fetching active meetings for user:', error.message);
     }
   };
 
   // Вызываем fetchMeetings при загрузке страницы
   useEffect(() => {
-    console.log('Fetching meetings on page load');
     if (user && user.email) {
       fetchMeetings();
-    } else {
-      console.log('User or user.email not defined on page load');
     }
   }, []);
 
@@ -137,37 +124,37 @@ function UsersPage({ user, onLogout }) {
     const socket = socketRef.current;
 
     socket.on('connect', () => {
-      console.log('Successfully connected to Socket.IO server at', new Date().toISOString());
       setSocketError(null);
     });
 
     socket.on('connect_error', (error) => {
-      console.error('Socket.IO connection error at', new Date().toISOString(), error.message);
       setSocketError('Не удалось подключиться к серверу голосования. Пытаемся переподключиться...');
     });
 
-    socket.on('connect_timeout', () => {
-      console.log('Socket.IO connection timeout at', new Date().toISOString());
-    });
+    socket.on('connect_timeout', () => {});
 
-    socket.on('reconnect_attempt', (attempt) => {
-      console.log('Reconnection attempt #', attempt, 'at', new Date().toISOString());
-    });
+    socket.on('reconnect_attempt', (attempt) => {});
 
     socket.on('disconnect', (reason) => {
-      console.log('Socket.IO disconnected:', reason);
+      console.log('[Socket.IO] Disconnected:', reason);
       if (reason === 'io server disconnect' || reason === 'transport close') {
         socket.connect();
       }
     });
 
-    socket.on('meeting-status-changed', () => {
-      console.log('Meeting status changed, refreshing meetings at', new Date().toISOString());
-      fetchMeetings();
+    socket.on('meeting-status-changed', (data) => {
+      console.log('[Socket.IO] Meeting status changed, refreshing meetings at', new Date().toISOString());
+      console.log('[Socket.IO] Meeting status changed data:', data);
+      if (data.status === 'COMPLETED' && data.id && !redirectingRef.current) {
+        redirectingRef.current = true;
+        console.log('[Socket.IO] Meeting completed, navigating to /user/protocol/', data.id);
+        navigate(`/user/protocol/${data.id}`);
+      } else {
+        fetchMeetings();
+      }
     });
 
     socket.on('new-vote-result', (voteData) => {
-      console.log('Received new-vote-result at', new Date().toISOString(), voteData);
       if (voteData.voteStatus === 'PENDING') {
         setVote(voteData);
         setTimeLeft(voteData.duration);
@@ -179,7 +166,6 @@ function UsersPage({ user, onLogout }) {
     });
 
     socket.on('vote-ended', (finalVoteResult) => {
-      console.log('Vote ended at', new Date().toISOString(), finalVoteResult);
       if (finalVoteResult.voteStatus === 'ENDED') {
         setVote(finalVoteResult);
         setVoteResults({
@@ -193,11 +179,11 @@ function UsersPage({ user, onLogout }) {
         setSelectedChoice(null);
         setCurrentAgendaItem(null);
       }
+      console.log('[Socket.IO] Calling fetchMeetings after vote-ended');
       fetchMeetings();
     });
 
     socket.on('vote-applied', () => {
-      console.log('Vote applied received at', new Date().toISOString());
       setVoteResults(null);
       setVote(null);
       setTimeLeft(null);
@@ -210,7 +196,6 @@ function UsersPage({ user, onLogout }) {
     });
 
     socket.on('vote-cancelled', () => {
-      console.log('Vote cancelled received at', new Date().toISOString());
       setVoteResults(null);
       setVote(null);
       setTimeLeft(null);
@@ -220,7 +205,6 @@ function UsersPage({ user, onLogout }) {
     });
 
     socket.on('meeting-ended', () => {
-      console.log('Meeting ended at', new Date().toISOString());
       setMeetings(prevMeetings =>
         prevMeetings.map(meeting =>
           meeting.id === activeMeeting?.id ? { ...meeting, status: 'COMPLETED' } : meeting
@@ -234,9 +218,7 @@ function UsersPage({ user, onLogout }) {
       setCurrentAgendaItem(null);
     });
 
-    // Обработчик для agenda-item-updated
     socket.on('agenda-item-updated', (agendaItemData) => {
-      console.log('Received agenda-item-updated at', new Date().toISOString(), agendaItemData);
       if (activeMeeting && activeMeeting.id === agendaItemData.meetingId) {
         setActiveMeeting(prev => ({
           ...prev,
@@ -246,11 +228,12 @@ function UsersPage({ user, onLogout }) {
               : item
           ).sort((a, b) => a.number - b.number),
         }));
-        fetchMeetings(); // Синхронизируем данные с сервером
+        fetchMeetings();
       }
     });
 
     return () => {
+      console.log('[useEffect] Cleaning up Socket.IO listeners');
       socket.off('new-vote-result');
       socket.off('vote-ended');
       socket.off('vote-applied');
@@ -258,7 +241,7 @@ function UsersPage({ user, onLogout }) {
       socket.off('meeting-ended');
       socket.off('agenda-item-updated');
       socketRef.current.disconnect();
-      console.log('Socket.IO disconnected on cleanup');
+      console.log('[useEffect] Socket.IO disconnected on cleanup');
     };
   }, []);
 
@@ -291,7 +274,7 @@ function UsersPage({ user, onLogout }) {
                 fetchMeetings();
               }
             } catch (error) {
-              console.error('Error fetching vote results:', error.message);
+              console.error('[useEffect] Error fetching vote results:', error.message);
             }
           };
           fetchResults();
@@ -309,12 +292,17 @@ function UsersPage({ user, onLogout }) {
         agendaItemId: vote.agendaItemId,
         choice,
       });
-      console.log('User voted:', choice);
     } catch (error) {
-      console.error('Error submitting vote:', error.message);
+      console.error('[handleVote] Error submitting vote:', error.message);
     }
   };
 
+  // Проверяем, если текущий маршрут — это протокол, показываем только Outlet
+  if (location.pathname.startsWith('/user/protocol')) {
+    return <Outlet />;
+  }
+
+  // Обычная разметка для /user
   return (
     <div className="user-page">
       <header className="header">
@@ -372,8 +360,7 @@ function UsersPage({ user, onLogout }) {
             </div>
             <div className="participants-section">
               <div className="participants-block">
-                <p>{activeMeeting.participantsOnline}/{activeMeeting.participantsTotal} участников</p>
-                <h3>Список участников:</h3>
+                <h3>Список участников</h3>
                 <ul className="participants-list">
                   {participants.length > 0 ? (
                     participants.map(participant => (
@@ -385,19 +372,15 @@ function UsersPage({ user, onLogout }) {
                 </ul>
               </div>
             </div>
+      
           </div>
         ) : nearestMeeting ? (
           <p>Нет активных заседаний, ближайшее: {new Date(nearestMeeting.startTime).toLocaleString()}</p>
         ) : (
           <p>Нет активных заседаний</p>
         )}
-        {meetings.some(meeting => meeting.status === 'COMPLETED') && (
-          <Link to={`/user/protocol/${meetings.find(m => m.status === 'COMPLETED').id}`} className="protocol-link">
-            Протокол повестки
-          </Link>
-        )}
+     
       </div>
-
       {vote && (
         <div className="modal">
           <div className="modal-content">

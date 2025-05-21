@@ -3,6 +3,7 @@ import LoginPage from './pages/LoginPage';
 import AdminPanel from './pages/AdminPanel';
 import UserPage from './pages/UserPage';
 import ProtocolPage from './pages/ProtocolPage';
+
 import './App.css';
 import { useState } from 'react';
 import axios from 'axios';
@@ -64,7 +65,7 @@ function App() {
             )
           }
         >
-          <Route path="protocol/:id" element={<ProtocolPage />} />
+          <Route path="protocol/:id" element={<ProtocolPage user={user} onLogout={handleLogout} />} /> {/* Передаём user и onLogout */}
         </Route>
       </Routes>
     </Router>

@@ -388,7 +388,7 @@ function MeetingControl() {
         >
           {status === 'WAITING' ? '▶ Начать заседание' : status === 'IN_PROGRESS' ? '⏹ Завершить заседание' : '✔ Завершено'}
         </button>
-        <p>Количество участников онлайн: {meeting.participantsOnline}/{meeting.participantsTotal}</p>
+       
       </div>
       <table className="agenda-table">
         <thead>
