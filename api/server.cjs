@@ -519,27 +519,64 @@ app.post('/api/meetings/:id/agenda-items', async (req, res) => {
   }
 });
 
+
+
+
+
+
+
+
 app.put('/api/meetings/:id/agenda-items/:itemId', async (req, res) => {
   const { id, itemId } = req.params;
-  const { number, title, speakerId, link, activeIssue } = req.body;
+  const { number, title, speakerId, link, activeIssue, completed } = req.body;
   console.log(`Updating agenda item ${itemId} for meeting ${id}:`, req.body);
   try {
-    const agendaItem = await prisma.agendaItem.update({
-      where: { id: parseInt(itemId), meetingId: parseInt(id) },
-      data: {
-        number,
-        title,
-        speakerId: speakerId ? parseInt(speakerId) : null,
-        link,
-        activeIssue: activeIssue !== undefined ? activeIssue : undefined, // Обновляем, только если передан
-      },
-    });
-    res.json(agendaItem);
+    // Начинаем транзакцию
+    const result = await prisma.$transaction([
+      // Сбрасываем activeIssue для всех других вопросов текущего заседания
+      prisma.agendaItem.updateMany({
+        where: {
+          meetingId: parseInt(id),
+          id: { not: parseInt(itemId) }, // Исключаем текущий вопрос
+        },
+        data: {
+          activeIssue: false,
+        },
+      }),
+      // Обновляем текущий вопрос
+      prisma.agendaItem.update({
+        where: { id: parseInt(itemId), meetingId: parseInt(id) },
+        data: {
+          number,
+          title,
+          speakerId: speakerId ? parseInt(speakerId) : null,
+          link,
+          activeIssue: activeIssue !== undefined ? activeIssue : undefined,
+          completed: completed !== undefined ? completed : undefined, // Добавляем поддержку completed
+        },
+      }),
+    ]);
+
+    res.json(result[1]); // Возвращаем обновлённый вопрос
   } catch (error) {
     console.error('Error updating agenda item:', error);
     res.status(400).json({ error: error.message });
   }
 });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 app.delete('/api/meetings/:id/agenda-items/:itemId', async (req, res) => {
   const { id, itemId } = req.params;

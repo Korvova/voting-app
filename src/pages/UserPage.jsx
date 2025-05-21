@@ -22,7 +22,10 @@ function UsersPage({ user, onLogout }) {
       const response = await axios.get('http://217.114.10.226:5000/api/meetings/active-for-user', {
         params: { email: user.email },
       });
-      const userMeetings = response.data;
+      const userMeetings = response.data.map(meeting => ({
+        ...meeting,
+        agendaItems: meeting.agendaItems.sort((a, b) => a.number - b.number), // Сортировка по number
+      }));
 
       console.log('User meetings:', userMeetings);
 
@@ -97,7 +100,7 @@ function UsersPage({ user, onLogout }) {
     } else {
       console.log('User or user.email not defined on page load');
     }
-  }, []); // Пустые зависимости — вызывается только при монтировании
+  }, []);
 
   // Инициализация Socket.IO с помощью useRef и useEffect
   useEffect(() => {
@@ -180,7 +183,6 @@ function UsersPage({ user, onLogout }) {
       setSelectedChoice(null);
       setCurrentAgendaItem(null);
       fetchMeetings();
-      // Резервный вызов fetchMeetings через 2 секунды
       setTimeout(() => {
         fetchMeetings();
       }, 2000);
@@ -201,7 +203,7 @@ function UsersPage({ user, onLogout }) {
       setMeetings(prevMeetings =>
         prevMeetings.map(meeting =>
           meeting.id === activeMeeting?.id ? { ...meeting, status: 'COMPLETED' } : meeting
-        )
+        ).sort((a, b) => a.number - b.number)
       );
       setActiveMeeting(null);
       setVote(null);
@@ -215,7 +217,7 @@ function UsersPage({ user, onLogout }) {
       socketRef.current.disconnect();
       console.log('Socket.IO disconnected on cleanup');
     };
-  }, []); // Пустые зависимости — создаём соединение один раз
+  }, []);
 
   // Визуальный обратный отсчёт
   useEffect(() => {
@@ -310,7 +312,7 @@ function UsersPage({ user, onLogout }) {
                             ? 'voting-active'
                             : item.completed
                             ? 'voting-completed'
-                            : currentAgendaItem && currentAgendaItem.number === item.number
+                            : item.activeIssue
                             ? 'active-agenda-item'
                             : ''
                         }
