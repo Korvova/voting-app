@@ -13,11 +13,12 @@ function UsersPage({ user, onLogout }) {
   const [selectedChoice, setSelectedChoice] = useState(null);
   const [currentAgendaItem, setCurrentAgendaItem] = useState(null);
   const [socketError, setSocketError] = useState(null);
+  const [participants, setParticipants] = useState([]); // Добавляем состояние для участников
 
   const socketRef = useRef(null);
 
   // Загрузка данных о заседаниях и проверка активного голосования
-    const fetchMeetings = async () => {
+  const fetchMeetings = async () => {
     try {
       const response = await axios.get('http://217.114.10.226:5000/api/meetings/active-for-user', {
         params: { email: user.email },
@@ -28,7 +29,7 @@ function UsersPage({ user, onLogout }) {
       }));
 
       console.log('User meetings:', userMeetings);
-      // Добавляем логирование agendaItems с activeIssue
+      // Логирование agendaItems с activeIssue
       userMeetings.forEach(meeting => {
         console.log(`Meeting ${meeting.id} agendaItems:`, meeting.agendaItems.map(item => ({
           id: item.id,
@@ -39,11 +40,21 @@ function UsersPage({ user, onLogout }) {
         })));
       });
 
+      // Логирование divisions с пользователями
+      console.log('Divisions with users:', userMeetings.map(meeting => ({
+        id: meeting.id,
+        divisions: meeting.divisions,
+      })));
+
       const active = userMeetings.find(meeting => meeting.status === 'IN_PROGRESS');
       console.log('Active meeting:', active);
 
       if (active) {
         setActiveMeeting(active);
+
+        // Извлекаем всех пользователей из divisions
+        const allParticipants = active.divisions.flatMap(division => division.users);
+        setParticipants(allParticipants);
 
         const latestVoteResult = await axios.get('http://217.114.10.226:5000/api/vote-results', {
           params: { meetingId: active.id },
@@ -223,7 +234,7 @@ function UsersPage({ user, onLogout }) {
       setCurrentAgendaItem(null);
     });
 
-    // Добавляем обработчик для agenda-item-updated
+    // Обработчик для agenda-item-updated
     socket.on('agenda-item-updated', (agendaItemData) => {
       console.log('Received agenda-item-updated at', new Date().toISOString(), agendaItemData);
       if (activeMeeting && activeMeeting.id === agendaItemData.meetingId) {
@@ -235,6 +246,7 @@ function UsersPage({ user, onLogout }) {
               : item
           ).sort((a, b) => a.number - b.number),
         }));
+        fetchMeetings(); // Синхронизируем данные с сервером
       }
     });
 
@@ -244,7 +256,7 @@ function UsersPage({ user, onLogout }) {
       socket.off('vote-applied');
       socket.off('vote-cancelled');
       socket.off('meeting-ended');
-      socket.off('agenda-item-updated'); // Отключаем обработчик agenda-item-updated
+      socket.off('agenda-item-updated');
       socketRef.current.disconnect();
       console.log('Socket.IO disconnected on cleanup');
     };
@@ -336,14 +348,14 @@ function UsersPage({ user, onLogout }) {
                   </thead>
                   <tbody>
                     {activeMeeting.agendaItems.map(item => (
-                 <tr
-  key={item.number}
-  className={
-    `${item.voting ? 'voting-active' : ''} ${
-      item.activeIssue ? 'active-agenda-item' : ''
-    } ${item.completed && !item.activeIssue ? 'voting-completed' : ''}`
-  }
->
+                      <tr
+                        key={item.number}
+                        className={
+                          `${item.voting ? 'voting-active' : ''} ${
+                            item.activeIssue ? 'active-agenda-item' : ''
+                          } ${item.completed && !item.activeIssue ? 'voting-completed' : ''}`
+                        }
+                      >
                         <td>{item.number}</td>
                         <td>{item.title}</td>
                         <td>{item.speaker}</td>
@@ -363,7 +375,13 @@ function UsersPage({ user, onLogout }) {
                 <p>{activeMeeting.participantsOnline}/{activeMeeting.participantsTotal} участников</p>
                 <h3>Список участников:</h3>
                 <ul className="participants-list">
-                  <li>Участники не загружены</li>
+                  {participants.length > 0 ? (
+                    participants.map(participant => (
+                      <li key={participant.id}>{participant.name}</li>
+                    ))
+                  ) : (
+                    <li>Участники отсутствуют</li>
+                  )}
                 </ul>
               </div>
             </div>

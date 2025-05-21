@@ -297,7 +297,11 @@ app.get('/api/meetings/active-for-user', async (req, res) => {
       where: {
         isArchived: false,
       },
-      include: { divisions: true },
+      include: {
+        divisions: {
+          include: { users: true }, // Подтягиваем пользователей для каждой Division
+        },
+      },
     });
 
     const userMeetings = meetings.filter(meeting =>
@@ -309,6 +313,7 @@ app.get('/api/meetings/active-for-user', async (req, res) => {
         const agendaItems = await prisma.agendaItem.findMany({
           where: { meetingId: meeting.id },
           include: { speaker: true },
+          orderBy: { number: 'asc' },
         });
         return {
           ...meeting,
@@ -322,20 +327,33 @@ app.get('/api/meetings/active-for-user', async (req, res) => {
             completed: item.completed,
             activeIssue: item.activeIssue,
           })),
-          divisions: meeting.divisions.map(d => d.name).join(', ') || 'Нет',
+          divisions: meeting.divisions.map(division => ({
+            id: division.id,
+            name: division.name,
+            users: division.users.map(user => ({
+              id: user.id,
+              name: user.name,
+              email: user.email,
+            })),
+          })), // Возвращаем divisions как массив объектов с пользователями
         };
       })
     );
 
-
     console.log('Agenda items response:', JSON.stringify(meetingsWithAgenda, null, 2));
-
     res.json(meetingsWithAgenda);
   } catch (error) {
     console.error('Error fetching active meetings for user:', error);
     res.status(500).json({ error: error.message });
   }
 });
+
+
+
+
+
+
+
 
 app.get('/api/meetings/:id', async (req, res) => {
   const { id } = req.params;
