@@ -63,6 +63,41 @@ pgClient.on('notification', async (msg) => {
   }
 });
 
+
+
+// Слушаем канал meeting_status_channel
+pgClient.query('LISTEN meeting_status_channel');
+pgClient.on('notification', async (msg) => {
+  if (msg.channel === 'meeting_status_channel') {
+    console.log('Received PostgreSQL notification for meeting_status_channel:', msg.payload);
+    const data = JSON.parse(msg.payload);
+    if (data.status) { // Уведомление для Meeting
+      io.emit('meeting-status-changed', data);
+      if (data.status === 'COMPLETED') {
+        io.emit('meeting-ended');
+      }
+    } else { // Уведомление для AgendaItem
+      console.log('Emitting agenda-item-updated:', data);
+      io.emit('agenda-item-updated', {
+        id: data.id,
+        meetingId: data.meetingId,
+        activeIssue: data.activeIssue,
+        completed: data.completed
+      });
+    }
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
 // Тестовый маршрут для проверки API
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -285,11 +320,15 @@ app.get('/api/meetings/active-for-user', async (req, res) => {
             link: item.link,
             voting: item.voting,
             completed: item.completed,
+            activeIssue: item.activeIssue,
           })),
           divisions: meeting.divisions.map(d => d.name).join(', ') || 'Нет',
         };
       })
     );
+
+
+    console.log('Agenda items response:', JSON.stringify(meetingsWithAgenda, null, 2));
 
     res.json(meetingsWithAgenda);
   } catch (error) {

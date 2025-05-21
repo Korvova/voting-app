@@ -17,7 +17,7 @@ function UsersPage({ user, onLogout }) {
   const socketRef = useRef(null);
 
   // Загрузка данных о заседаниях и проверка активного голосования
-  const fetchMeetings = async () => {
+    const fetchMeetings = async () => {
     try {
       const response = await axios.get('http://217.114.10.226:5000/api/meetings/active-for-user', {
         params: { email: user.email },
@@ -28,6 +28,16 @@ function UsersPage({ user, onLogout }) {
       }));
 
       console.log('User meetings:', userMeetings);
+      // Добавляем логирование agendaItems с activeIssue
+      userMeetings.forEach(meeting => {
+        console.log(`Meeting ${meeting.id} agendaItems:`, meeting.agendaItems.map(item => ({
+          id: item.id,
+          number: item.number,
+          title: item.title,
+          activeIssue: item.activeIssue,
+          completed: item.completed,
+        })));
+      });
 
       const active = userMeetings.find(meeting => meeting.status === 'IN_PROGRESS');
       console.log('Active meeting:', active);
@@ -213,7 +223,28 @@ function UsersPage({ user, onLogout }) {
       setCurrentAgendaItem(null);
     });
 
+    // Добавляем обработчик для agenda-item-updated
+    socket.on('agenda-item-updated', (agendaItemData) => {
+      console.log('Received agenda-item-updated at', new Date().toISOString(), agendaItemData);
+      if (activeMeeting && activeMeeting.id === agendaItemData.meetingId) {
+        setActiveMeeting(prev => ({
+          ...prev,
+          agendaItems: prev.agendaItems.map(item =>
+            item.id === agendaItemData.id
+              ? { ...item, activeIssue: agendaItemData.activeIssue, completed: agendaItemData.completed }
+              : item
+          ).sort((a, b) => a.number - b.number),
+        }));
+      }
+    });
+
     return () => {
+      socket.off('new-vote-result');
+      socket.off('vote-ended');
+      socket.off('vote-applied');
+      socket.off('vote-cancelled');
+      socket.off('meeting-ended');
+      socket.off('agenda-item-updated'); // Отключаем обработчик agenda-item-updated
       socketRef.current.disconnect();
       console.log('Socket.IO disconnected on cleanup');
     };
@@ -305,18 +336,14 @@ function UsersPage({ user, onLogout }) {
                   </thead>
                   <tbody>
                     {activeMeeting.agendaItems.map(item => (
-                      <tr
-                        key={item.number}
-                        className={
-                          item.voting
-                            ? 'voting-active'
-                            : item.completed
-                            ? 'voting-completed'
-                            : item.activeIssue
-                            ? 'active-agenda-item'
-                            : ''
-                        }
-                      >
+                 <tr
+  key={item.number}
+  className={
+    `${item.voting ? 'voting-active' : ''} ${
+      item.activeIssue ? 'active-agenda-item' : ''
+    } ${item.completed && !item.activeIssue ? 'voting-completed' : ''}`
+  }
+>
                         <td>{item.number}</td>
                         <td>{item.title}</td>
                         <td>{item.speaker}</td>
