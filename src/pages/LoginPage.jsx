@@ -13,7 +13,11 @@ function LoginPage({ onLogin }) {
 
   return (
     <div className="app">
-      <h1 className="title">Вход</h1>
+
+      <p className="title"> RMS - Система голосования </p>
+
+
+      <h1 className="title">   Вход</h1>
       <form className="login-form" onSubmit={handleLogin}>
         <div className="form-group">
           <label>Email</label>

@@ -1,3 +1,4 @@
+/* Существующие стили */
 .app {
   display: flex;
   flex-direction: column;
@@ -205,6 +206,7 @@ button:hover {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   border-radius: 8px;
   overflow: hidden;
+   margin-bottom: 20px;
 }
 
 .users-table th,
@@ -425,7 +427,7 @@ button:hover {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  margin-top: 1rem;
+  margin-top: 2rem; /* Увеличиваем отступ сверху для большего пространства */
 }
 
 .action-buttons {
@@ -624,7 +626,6 @@ button:hover {
   background-color: #f0f0f0;
 }
 
-
 .agenda-items-table .active-agenda-item {
   background-color: #e0ffe0; /* Светло-зелёный цвет для текущего вопроса */
 }
@@ -759,7 +760,6 @@ button:hover {
   background-color: #34c759;
   color: white;
 }
-
 
 /* Стили для строк таблицы в зависимости от статуса заседания */
 .completed-meeting {

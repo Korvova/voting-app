@@ -25,6 +25,7 @@ function UsersPage({ user, onLogout }) {
     if (location.pathname === '/user') {
       redirectingRef.current = false; // Сбрасываем, чтобы редирект мог сработать снова
     }
+    console.log('Current location:', location.pathname); // Логируем текущий маршрут
   }, [location.pathname]);
 
   // Загрузка данных о заседаниях и проверка активного голосования
@@ -34,12 +35,16 @@ function UsersPage({ user, onLogout }) {
         params: { email: user.email },
       });
 
+      console.log('API response for meetings:', response.data); // Логируем данные от API
+
       const userMeetings = response.data.map(meeting => ({
         ...meeting,
         agendaItems: meeting.agendaItems.sort((a, b) => a.number - b.number),
       }));
 
       const active = userMeetings.find(meeting => meeting.status === 'IN_PROGRESS');
+
+      console.log('Active meeting:', active); // Логируем активное заседание
 
       if (active) {
         setActiveMeeting(active);
@@ -108,7 +113,7 @@ function UsersPage({ user, onLogout }) {
     if (user && user.email) {
       fetchMeetings();
     }
-  }, []);
+  }, [user]);
 
   // Инициализация Socket.IO с помощью useRef и useEffect
   useEffect(() => {
@@ -125,15 +130,21 @@ function UsersPage({ user, onLogout }) {
 
     socket.on('connect', () => {
       setSocketError(null);
+      console.log('Socket.IO connected');
     });
 
     socket.on('connect_error', (error) => {
       setSocketError('Не удалось подключиться к серверу голосования. Пытаемся переподключиться...');
+      console.log('Socket.IO connect error:', error);
     });
 
-    socket.on('connect_timeout', () => {});
+    socket.on('connect_timeout', () => {
+      console.log('Socket.IO connect timeout');
+    });
 
-    socket.on('reconnect_attempt', (attempt) => {});
+    socket.on('reconnect_attempt', (attempt) => {
+      console.log('Socket.IO reconnect attempt:', attempt);
+    });
 
     socket.on('disconnect', (reason) => {
       console.log('[Socket.IO] Disconnected:', reason);
@@ -155,6 +166,7 @@ function UsersPage({ user, onLogout }) {
     });
 
     socket.on('new-vote-result', (voteData) => {
+      console.log('New vote result received:', voteData);
       if (voteData.voteStatus === 'PENDING') {
         setVote(voteData);
         setTimeLeft(voteData.duration);
@@ -166,6 +178,7 @@ function UsersPage({ user, onLogout }) {
     });
 
     socket.on('vote-ended', (finalVoteResult) => {
+      console.log('Vote ended:', finalVoteResult);
       if (finalVoteResult.voteStatus === 'ENDED') {
         setVote(finalVoteResult);
         setVoteResults({
@@ -184,6 +197,7 @@ function UsersPage({ user, onLogout }) {
     });
 
     socket.on('vote-applied', () => {
+      console.log('Vote applied');
       setVoteResults(null);
       setVote(null);
       setTimeLeft(null);
@@ -196,6 +210,7 @@ function UsersPage({ user, onLogout }) {
     });
 
     socket.on('vote-cancelled', () => {
+      console.log('Vote cancelled');
       setVoteResults(null);
       setVote(null);
       setTimeLeft(null);
@@ -205,6 +220,7 @@ function UsersPage({ user, onLogout }) {
     });
 
     socket.on('meeting-ended', () => {
+      console.log('Meeting ended');
       setMeetings(prevMeetings =>
         prevMeetings.map(meeting =>
           meeting.id === activeMeeting?.id ? { ...meeting, status: 'COMPLETED' } : meeting
@@ -219,6 +235,7 @@ function UsersPage({ user, onLogout }) {
     });
 
     socket.on('agenda-item-updated', (agendaItemData) => {
+      console.log('Agenda item updated:', agendaItemData);
       if (activeMeeting && activeMeeting.id === agendaItemData.meetingId) {
         setActiveMeeting(prev => ({
           ...prev,
