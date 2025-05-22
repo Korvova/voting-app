@@ -2,8 +2,9 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import UsersPage from './UsersPage';
 import DivisionsPage from './DivisionsPage';
 import MeetingsPage from './MeetingsPage';
-import MeetingControlList from './MeetingControlList'; // Новый компонент
+import MeetingControlList from './MeetingControlList';
 import MeetingControl from './MeetingControl';
+import ProtocolPage from './ProtocolPage'; // Импортируем ProtocolPage
 
 function AdminPanel({ user, onLogout }) {
   const navigate = useNavigate();
@@ -53,6 +54,7 @@ function AdminPanel({ user, onLogout }) {
           <Route path="/meetings/*" element={<MeetingsPage />} />
           <Route path="/control" element={<MeetingControlList />} />
           <Route path="/control/meeting/:id" element={<MeetingControl />} />
+          <Route path="/protocol/:id" element={<ProtocolPage user={user} onLogout={onLogout} />} />
         </Routes>
       </div>
     </div>

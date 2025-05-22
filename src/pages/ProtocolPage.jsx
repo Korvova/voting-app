@@ -239,7 +239,11 @@ function ProtocolPage({ user, onLogout }) {
             ))}
           </tbody>
         </table>
-        <Link to="/user" className="back-link" style={{ display: 'block', margin: '20px 0' }}>
+        <Link
+          to={user.isAdmin ? "/admin/meetings" : "/user"}
+          className="back-link"
+          style={{ display: 'block', margin: '20px 0' }}
+        >
           Назад к списку заседаний
         </Link>
         <PDFDownloadLink document={<MyDocument />} fileName={`protocol_${id}.pdf`}>

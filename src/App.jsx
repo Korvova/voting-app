@@ -67,7 +67,9 @@ function App() {
               <Navigate to="/" />
             )
           }
-        />
+        >
+          <Route path="protocol/:id" element={<ProtocolPage user={user} onLogout={handleLogout} />} />
+        </Route>
         <Route
           path="/user/*"
           element={

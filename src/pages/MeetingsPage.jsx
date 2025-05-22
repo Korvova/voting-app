@@ -232,6 +232,12 @@ function MeetingsList() {
       }
     } else if (type === 'edit') {
       console.log('Sending edit meeting data:', editMeeting);
+      // Проверяем статус заседания перед редактированием
+      if (editMeeting.status === 'COMPLETED') {
+        setErrorMessage('Нельзя редактировать завершённое заседание.');
+        setShowErrorModal(true);
+        return;
+      }
       try {
         const response = await axios.put(`http://217.114.10.226:5000/api/meetings/${editMeeting.id}`, {
           ...editMeeting,
@@ -421,12 +427,27 @@ function MeetingsList() {
         <tbody>
           {meetings.map(meeting => (
             !meeting.isArchived && (
-              <tr key={meeting.id} onClick={() => handleEditMeeting(meeting)} style={{ cursor: 'pointer' }}>
+              <tr
+                key={meeting.id}
+                onClick={() => {
+                  if (meeting.status !== 'COMPLETED') {
+                    handleEditMeeting(meeting);
+                  }
+                }}
+                style={{ cursor: meeting.status !== 'COMPLETED' ? 'pointer' : 'default' }}
+                className={meeting.status === 'COMPLETED' ? 'completed-meeting' : ''}
+              >
                 <td>{meeting.name}</td>
                 <td>{meeting.startTime}</td>
                 <td>{meeting.endTime}</td>
                 <td className="divisions-column">{meeting.divisions || 'Нет'}</td>
-                <td><Link to={meeting.resultLink}>Результат</Link></td>
+                <td>
+                  {meeting.status === 'COMPLETED' ? (
+                    <Link to={`/admin/protocol/${meeting.id}`}>Результат</Link>
+                  ) : (
+                    'Ждет запуска'
+                  )}
+                </td>
                 <td>
                   <button className="delete-button" onClick={(e) => { e.stopPropagation(); handleDeleteMeeting(meeting); }}>X</button>
                 </td>
@@ -737,12 +758,21 @@ function MeetingsArchive() {
         </thead>
         <tbody>
           {meetings.map(meeting => (
-            <tr key={meeting.id}>
+            <tr
+              key={meeting.id}
+              className={meeting.status === 'COMPLETED' ? 'completed-meeting' : ''}
+            >
               <td>{meeting.name}</td>
               <td>{meeting.startTime}</td>
               <td>{meeting.endTime}</td>
               <td className="divisions-column">{meeting.divisions || 'Нет'}</td>
-              <td><Link to={meeting.resultLink}>Результат</Link></td>
+              <td>
+                {meeting.status === 'COMPLETED' ? (
+                  <Link to={`/admin/protocol/${meeting.id}`}>Результат</Link>
+                ) : (
+                  'Ждет запуска'
+                )}
+              </td>
               <td>
                 <button
                   className="delete-button"
