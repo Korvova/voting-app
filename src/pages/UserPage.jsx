@@ -284,18 +284,18 @@ function UsersPage({ user, onLogout }) {
     return () => clearTimeout(timer);
   }, [timeLeft, vote]);
 
-  const handleVote = async (choice) => {
-    setSelectedChoice(choice);
-    try {
-      await axios.post('http://217.114.10.226:5000/api/vote', {
-        userId: user.email,
-        agendaItemId: vote.agendaItemId,
-        choice,
-      });
-    } catch (error) {
-      console.error('[handleVote] Error submitting vote:', error.message);
-    }
-  };
+const handleVote = async (choice) => {
+  setSelectedChoice(choice);
+  try {
+    await axios.post('http://217.114.10.226:5000/api/vote-by-result', {
+      userId: user.email,
+      voteResultId: vote.id, // Используем vote.id как voteResultId
+      choice,
+    });
+  } catch (error) {
+    console.error('[handleVote] Error submitting vote:', error.message);
+  }
+};
 
   // Проверяем, если текущий маршрут — это протокол, показываем только Outlet
   if (location.pathname.startsWith('/user/protocol')) {
@@ -396,21 +396,21 @@ function UsersPage({ user, onLogout }) {
                   <button
                     className={selectedChoice === 'FOR' ? 'vote-button-selected' : 'vote-button'}
                     onClick={() => handleVote('FOR')}
-                    disabled={selectedChoice !== null}
+                   // disabled={selectedChoice !== null}  // - если надо чтобы голосовал только один раз
                   >
                     За
                   </button>
                   <button
                     className={selectedChoice === 'AGAINST' ? 'vote-button-selected' : 'vote-button'}
                     onClick={() => handleVote('AGAINST')}
-                    disabled={selectedChoice !== null}
+                    // disabled={selectedChoice !== null}
                   >
                     Против
                   </button>
                   <button
                     className={selectedChoice === 'ABSTAIN' ? 'vote-button-selected' : 'vote-button'}
                     onClick={() => handleVote('ABSTAIN')}
-                    disabled={selectedChoice !== null}
+                   // disabled={selectedChoice !== null}
                   >
                     Воздержусь
                   </button>

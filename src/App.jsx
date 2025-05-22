@@ -5,11 +5,24 @@ import UserPage from './pages/UserPage';
 import ProtocolPage from './pages/ProtocolPage';
 
 import './App.css';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
 
 function App() {
-  const [user, setUser] = useState(null);
+  // Восстанавливаем user из localStorage при загрузке, если он там есть
+  const [user, setUser] = useState(() => {
+    const savedUser = localStorage.getItem('user');
+    return savedUser ? JSON.parse(savedUser) : null;
+  });
+
+  // Сохраняем user в localStorage при его изменении
+  useEffect(() => {
+    if (user) {
+      localStorage.setItem('user', JSON.stringify(user));
+    } else {
+      localStorage.removeItem('user');
+    }
+  }, [user]);
 
   const handleLogin = async (userData) => {
     try {
@@ -25,7 +38,7 @@ function App() {
   };
 
   const handleLogout = () => {
-    setUser(null);
+    setUser(null); // Очищаем user, localStorage обновится через useEffect
   };
 
   return (
@@ -65,7 +78,7 @@ function App() {
             )
           }
         >
-          <Route path="protocol/:id" element={<ProtocolPage user={user} onLogout={handleLogout} />} /> {/* Передаём user и onLogout */}
+          <Route path="protocol/:id" element={<ProtocolPage user={user} onLogout={handleLogout} />} />
         </Route>
       </Routes>
     </Router>

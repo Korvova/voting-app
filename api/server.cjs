@@ -527,6 +527,121 @@ app.post('/api/vote', async (req, res) => {
   }
 });
 
+
+
+
+
+    //.................. Api для голосования
+
+
+app.post('/api/vote-by-result', async (req, res) => {
+  const { userId, voteResultId, choice } = req.body;
+  try {
+    // Проверяем входные данные
+    if (!userId || !voteResultId || !['FOR', 'AGAINST', 'ABSTAIN'].includes(choice)) {
+      return res.status(400).json({ error: 'Invalid request data: userId, voteResultId, and valid choice are required' });
+    }
+
+    // Находим пользователя
+    const user = await prisma.user.findUnique({ where: { email: userId } });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Находим голосование
+    const voteResult = await prisma.voteResult.findUnique({
+      where: { id: parseInt(voteResultId) },
+      include: { agendaItem: { include: { meeting: { include: { divisions: true } } } } },
+    });
+    if (!voteResult) {
+      return res.status(404).json({ error: 'Vote result not found' });
+    }
+
+    // Используем транзакцию для атомарного обновления
+    const result = await prisma.$transaction(async (prisma) => {
+      // Проверяем, есть ли уже голос пользователя для этого VoteResult
+      const existingVote = await prisma.vote.findFirst({
+        where: {
+          userId: user.id,
+          voteResultId: parseInt(voteResultId),
+        },
+      });
+
+      let vote;
+      if (existingVote) {
+        // Если голос существует, обновляем его
+        vote = await prisma.vote.update({
+          where: { id: existingVote.id },
+          data: {
+            choice,
+            createdAt: new Date(),
+          },
+        });
+      } else {
+        // Если голоса нет, создаём новый
+        vote = await prisma.vote.create({
+          data: {
+            userId: user.id,
+            agendaItemId: voteResult.agendaItemId,
+            voteResultId: parseInt(voteResultId),
+            choice,
+            createdAt: new Date(),
+          },
+        });
+      }
+
+      // Пересчитываем счётчики в VoteResult
+      const votes = await prisma.vote.findMany({
+        where: { voteResultId: parseInt(voteResultId) },
+      });
+
+      const participants = await prisma.user.findMany({
+        where: {
+          divisionId: { in: voteResult.agendaItem.meeting.divisions.map(d => d.id) },
+          isAdmin: false,
+        },
+      });
+
+      const votesFor = votes.filter(v => v.choice === 'FOR').length;
+      const votesAgainst = votes.filter(v => v.choice === 'AGAINST').length;
+      const votesAbstain = votes.filter(v => v.choice === 'ABSTAIN').length;
+      const votedUserIds = [...new Set(votes.map(v => v.userId))];
+      const votesAbsent = participants.length - votedUserIds.length;
+
+      const updatedVoteResult = await prisma.voteResult.update({
+        where: { id: voteResult.id },
+        data: {
+          votesFor,
+          votesAgainst,
+          votesAbstain,
+          votesAbsent,
+        },
+      });
+
+      return { vote, updatedVoteResult };
+    });
+
+    // Отправляем уведомление через Socket.IO
+    const payload = {
+      ...result.updatedVoteResult,
+      createdAt: result.updatedVoteResult.createdAt.toISOString(),
+    };
+    await pgClient.query(`NOTIFY vote_result_channel, '${JSON.stringify(payload)}'`);
+
+    res.json({ success: true, vote: result.vote });
+  } catch (error) {
+    console.error('Error submitting vote:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+
+
+
+
+
+
+
 // API для получения повесток
 app.get('/api/meetings/:id/agenda-items', async (req, res) => {
   const { id } = req.params;

@@ -65,15 +65,6 @@ model AgendaItem {
   activeIssue Boolean     @default(false) // Поля показывает активный вопрос
 }
 
-model Vote {
-  id          Int        @id @default(autoincrement())
-  userId      Int
-  user        User       @relation(fields: [userId], references: [id])
-  agendaItemId Int
-  agendaItem  AgendaItem @relation(fields: [agendaItemId], references: [id])
-  choice      VoteChoice
-  createdAt   DateTime   @default(now())
-}
 
 model VoteResult {
   id            Int        @id @default(autoincrement())
@@ -87,9 +78,27 @@ model VoteResult {
   votesAbstain  Int        @default(0)
   votesAbsent   Int        @default(0)
   createdAt     DateTime   @default(now())
-  duration      Int?       // Время голосования в секундах
+  duration      Int?
   voteStatus    String     @default("PENDING")
+  votes         Vote[]     @relation("VoteToVoteResult") // Связь один-ко-многим с Vote
 }
+
+model Vote {
+  id          Int        @id @default(autoincrement())
+  userId      Int
+  user        User       @relation(fields: [userId], references: [id])
+  agendaItemId Int
+  agendaItem  AgendaItem @relation(fields: [agendaItemId], references: [id])
+  voteResultId Int?        // Поле для связи с VoteResult
+  voteResult  VoteResult? @relation(fields: [voteResultId], references: [id], name: "VoteToVoteResult")
+  choice      VoteChoice
+  createdAt   DateTime   @default(now())
+}
+
+
+
+
+
 
 enum MeetingStatus {
   WAITING
