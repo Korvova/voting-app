@@ -451,22 +451,72 @@ app.put('/api/meetings/:id', async (req, res) => {
   }
 });
 
+
+
+
+
+
+
+
+
 app.delete('/api/meetings/:id', async (req, res) => {
   const { id } = req.params;
   console.log(`Deleting meeting ${id}`);
   try {
-    const meeting = await prisma.meeting.findUnique({ where: { id: parseInt(id) } });
+    const meeting = await prisma.meeting.findUnique({ 
+      where: { id: parseInt(id) },
+      include: { agendaItems: true } // Подтягиваем связанные AgendaItem
+    });
     if (!meeting) {
       return res.status(404).json({ error: 'Meeting not found' });
     }
-    await prisma.agendaItem.deleteMany({ where: { meetingId: parseInt(id) } });
-    await prisma.meeting.delete({ where: { id: parseInt(id) } });
+
+    // Используем транзакцию для атомарного удаления
+    await prisma.$transaction(async (prisma) => {
+      // 1. Находим все AgendaItem, связанные с Meeting
+      const agendaItems = meeting.agendaItems;
+
+      // 2. Удаляем все Vote и VoteResult, связанные с каждым AgendaItem
+      for (const agendaItem of agendaItems) {
+        // Удаляем Vote
+        await prisma.vote.deleteMany({
+          where: { agendaItemId: agendaItem.id },
+        });
+
+        // Удаляем VoteResult
+        await prisma.voteResult.deleteMany({
+          where: { agendaItemId: agendaItem.id },
+        });
+      }
+
+      // 3. Удаляем все AgendaItem, связанные с Meeting
+      await prisma.agendaItem.deleteMany({
+        where: { meetingId: parseInt(id) },
+      });
+
+      // 4. Удаляем все VoteResult, связанные с Meeting через meetingId
+      await prisma.voteResult.deleteMany({
+        where: { meetingId: parseInt(id) },
+      });
+
+      // 5. Удаляем само Meeting
+      await prisma.meeting.delete({
+        where: { id: parseInt(id) },
+      });
+    });
+
     res.json({ success: true });
   } catch (error) {
     console.error('Error deleting meeting:', error);
     res.status(400).json({ error: error.message });
   }
 });
+
+
+
+
+
+
 
 app.post('/api/meetings/:id/archive', async (req, res) => {
   const { id } = req.params;

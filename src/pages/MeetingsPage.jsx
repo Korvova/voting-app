@@ -681,6 +681,8 @@ function MeetingsList() {
 
 function MeetingsArchive() {
   const [meetings, setMeetings] = useState([]);
+  const [showDeleteModal, setShowDeleteModal] = useState(false); // Модальное окно для удаления
+  const [meetingToDelete, setMeetingToDelete] = useState(null); // Заседание, которое будем удалять
 
   useEffect(() => {
     // Получение списка архивных заседаний через API
@@ -696,6 +698,29 @@ function MeetingsArchive() {
     fetchMeetings();
   }, []);
 
+  const handleDeleteMeeting = (meeting) => {
+    setMeetingToDelete(meeting);
+    setShowDeleteModal(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
+      await axios.delete(`http://217.114.10.226:5000/api/meetings/${meetingToDelete.id}`);
+      setMeetings(meetings.filter(meeting => meeting.id !== meetingToDelete.id));
+      setShowDeleteModal(false);
+      setMeetingToDelete(null);
+    } catch (error) {
+      console.error('Error deleting archived meeting:', error.message);
+      setShowDeleteModal(false);
+      setMeetingToDelete(null);
+    }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
+    setMeetingToDelete(null);
+  };
+
   return (
     <div className="meetings-archive">
       <h2>Архив заседаний</h2>
@@ -707,6 +732,7 @@ function MeetingsArchive() {
             <th>Конец</th>
             <th>Подразделения</th>
             <th>Результат</th>
+            <th></th> {/* Добавляем колонку для кнопки удаления */}
           </tr>
         </thead>
         <tbody>
@@ -717,11 +743,29 @@ function MeetingsArchive() {
               <td>{meeting.endTime}</td>
               <td className="divisions-column">{meeting.divisions || 'Нет'}</td>
               <td><Link to={meeting.resultLink}>Результат</Link></td>
+              <td>
+                <button
+                  className="delete-button"
+                  onClick={(e) => { e.stopPropagation(); handleDeleteMeeting(meeting); }}
+                >
+                  X
+                </button>
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
       <Link to="/admin/meetings" className="back-link">Назад к заседаниям</Link>
+
+      {showDeleteModal && (
+        <div className="modal">
+          <div className="modal-content">
+            <p>Вы уверены, что хотите удалить заседание {meetingToDelete?.name}?</p>
+            <button onClick={confirmDelete}>Да</button>
+            <button onClick={cancelDelete}>Нет</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
