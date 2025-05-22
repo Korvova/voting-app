@@ -531,7 +531,8 @@ app.post('/api/vote', async (req, res) => {
 
 
 
-    //.................. Api для голосования
+
+//.................. Api для голосования
 
 
 app.post('/api/vote-by-result', async (req, res) => {

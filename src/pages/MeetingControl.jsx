@@ -29,8 +29,12 @@ function MeetingControl() {
           .filter(vote => vote.agendaItemId === item.id && vote.voteStatus === 'APPLIED')
           .map(vote => ({
             question: vote.question,
-            results: `За - ${vote.votesFor}, Против - ${vote.votesAgainst}, Воздержались - ${vote.votesAbstain}, Не проголосовали - ${vote.votesAbsent}`
-          })); // Разделяем название и результаты
+            results: `За - ${vote.votesFor} |   Против - ${vote.votesAgainst} |   Воздержались - ${vote.votesAbstain} |  Не проголосовали - ${vote.votesAbsent}`, // Новый формат с | и пробелами
+            votesFor: vote.votesFor,
+            votesAgainst: vote.votesAgainst,
+            votesAbstain: vote.votesAbstain,
+            votesAbsent: vote.votesAbsent,
+          }));
 
         return {
           id: item.id,
@@ -329,7 +333,7 @@ function MeetingControl() {
                 ...item,
                 votes: [
                   ...item.votes,
-                  { question: voteResults.question, results: `За - ${voteResults.votesFor}, Против - ${voteResults.votesAgainst}, Воздержались - ${voteResults.votesAbstain}, Не проголосовали - ${voteResults.votesAbsent}` }
+                  { question: voteResults.question, results: `За - ${voteResults.votesFor} | Против - ${voteResults.votesAgainst} | Воздержались - ${voteResults.votesAbstain} | Не проголосовали - ${voteResults.votesAbsent}`, votesFor: voteResults.votesFor, votesAgainst: voteResults.votesAgainst, votesAbstain: voteResults.votesAbstain, votesAbsent: voteResults.votesAbsent }
                 ],
               }
             : item
@@ -413,14 +417,20 @@ function MeetingControl() {
               <td>{item.speaker}</td>
               <td className="vote-results-column">
                 {item.votes.length > 0 ? (
-                  item.votes.map((vote, index) => (
-                    <div key={index}>
-                      <strong>{vote.question}</strong>
-                      <br />
-                      {vote.results}
-                      {index < item.votes.length - 1 && <br />} {/* Добавляем перенос строки между голосованиями */}
-                    </div>
-                  ))
+                  item.votes.map((vote, index) => {
+                    const maxVotes = Math.max(vote.votesFor, vote.votesAgainst, vote.votesAbstain, vote.votesAbsent);
+                    return (
+                      <div key={index}>
+                        <strong>{vote.question}</strong>
+                        <br />
+                        <span style={{ backgroundColor: vote.votesFor === maxVotes ? 'darkgreen' : 'none', color: vote.votesFor === maxVotes ? 'white' : 'inherit' }}>{vote.results.split(' | ')[0]}</span> | 
+                        <span style={{ backgroundColor: vote.votesAgainst === maxVotes ? 'darkgreen' : 'none', color: vote.votesAgainst === maxVotes ? 'white' : 'inherit' }}>{vote.results.split(' | ')[1]}</span> | 
+                        <span style={{ backgroundColor: vote.votesAbstain === maxVotes ? 'darkgreen' : 'none', color: vote.votesAbstain === maxVotes ? 'white' : 'inherit' }}>{vote.results.split(' | ')[2]}</span> | 
+                        <span style={{ backgroundColor: vote.votesAbsent === maxVotes ? 'darkgreen' : 'none', color: vote.votesAbsent === maxVotes ? 'white' : 'inherit' }}>{vote.results.split(' | ')[3]}</span>
+                        {index < item.votes.length - 1 && <br />}
+                      </div>
+                    );
+                  })
                 ) : '-'}
               </td>
               <td className="action-column">

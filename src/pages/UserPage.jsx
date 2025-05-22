@@ -284,18 +284,18 @@ function UsersPage({ user, onLogout }) {
     return () => clearTimeout(timer);
   }, [timeLeft, vote]);
 
-const handleVote = async (choice) => {
-  setSelectedChoice(choice);
-  try {
-    await axios.post('http://217.114.10.226:5000/api/vote-by-result', {
-      userId: user.email,
-      voteResultId: vote.id, // Используем vote.id как voteResultId
-      choice,
-    });
-  } catch (error) {
-    console.error('[handleVote] Error submitting vote:', error.message);
-  }
-};
+  const handleVote = async (choice) => {
+    setSelectedChoice(choice);
+    try {
+      await axios.post('http://217.114.10.226:5000/api/vote-by-result', {
+        userId: user.email,
+        voteResultId: vote.id,
+        choice,
+      });
+    } catch (error) {
+      console.error('[handleVote] Error submitting vote:', error.message);
+    }
+  };
 
   // Проверяем, если текущий маршрут — это протокол, показываем только Outlet
   if (location.pathname.startsWith('/user/protocol')) {
@@ -348,7 +348,13 @@ const handleVote = async (choice) => {
                         <td>{item.title}</td>
                         <td>{item.speaker}</td>
                         <td>
-                          <a href={item.link || '#'} target="_blank" rel="noopener noreferrer">Документ</a>
+                          {item.link && item.link !== '' ? (
+                            <a href={item.link} target="_blank" rel="noopener noreferrer">
+                              Документ
+                            </a>
+                          ) : (
+                            '-'
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -372,14 +378,12 @@ const handleVote = async (choice) => {
                 </ul>
               </div>
             </div>
-      
           </div>
         ) : nearestMeeting ? (
           <p>Нет активных заседаний, ближайшее: {new Date(nearestMeeting.startTime).toLocaleString()}</p>
         ) : (
           <p>Нет активных заседаний</p>
         )}
-     
       </div>
       {vote && (
         <div className="modal">
@@ -396,21 +400,18 @@ const handleVote = async (choice) => {
                   <button
                     className={selectedChoice === 'FOR' ? 'vote-button-selected' : 'vote-button'}
                     onClick={() => handleVote('FOR')}
-                   // disabled={selectedChoice !== null}  // - если надо чтобы голосовал только один раз
                   >
                     За
                   </button>
                   <button
                     className={selectedChoice === 'AGAINST' ? 'vote-button-selected' : 'vote-button'}
                     onClick={() => handleVote('AGAINST')}
-                    // disabled={selectedChoice !== null}
                   >
                     Против
                   </button>
                   <button
                     className={selectedChoice === 'ABSTAIN' ? 'vote-button-selected' : 'vote-button'}
                     onClick={() => handleVote('ABSTAIN')}
-                   // disabled={selectedChoice !== null}
                   >
                     Воздержусь
                   </button>
