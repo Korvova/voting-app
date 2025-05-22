@@ -27,7 +27,10 @@ function MeetingControl() {
       const agendaItemsWithVotes = agendaResponse.data.map(item => {
         const relatedVotes = voteResultsResponse.data
           .filter(vote => vote.agendaItemId === item.id && vote.voteStatus === 'APPLIED')
-          .map(vote => `${vote.question}, За - ${vote.votesFor}, Против - ${vote.votesAgainst}, Воздержались - ${vote.votesAbstain}, Не проголосовали - ${vote.votesAbsent}`);
+          .map(vote => ({
+            question: vote.question,
+            results: `За - ${vote.votesFor}, Против - ${vote.votesAgainst}, Воздержались - ${vote.votesAbstain}, Не проголосовали - ${vote.votesAbsent}`
+          })); // Разделяем название и результаты
 
         return {
           id: item.id,
@@ -326,7 +329,7 @@ function MeetingControl() {
                 ...item,
                 votes: [
                   ...item.votes,
-                  `${voteResults.question}, За - ${voteResults.votesFor}, Против - ${voteResults.votesAgainst}, Воздержались - ${voteResults.votesAbstain}, Не проголосовали - ${voteResults.votesAbsent}`
+                  { question: voteResults.question, results: `За - ${voteResults.votesFor}, Против - ${voteResults.votesAgainst}, Воздержались - ${voteResults.votesAbstain}, Не проголосовали - ${voteResults.votesAbsent}` }
                 ],
               }
             : item
@@ -388,7 +391,6 @@ function MeetingControl() {
         >
           {status === 'WAITING' ? '▶ Начать заседание' : status === 'IN_PROGRESS' ? '⏹ Завершить заседание' : '✔ Завершено'}
         </button>
-       
       </div>
       <table className="agenda-table">
         <thead>
@@ -409,7 +411,18 @@ function MeetingControl() {
               <td>{item.number}</td>
               <td>{item.title}</td>
               <td>{item.speaker}</td>
-              <td className="vote-results-column">{item.votes.length > 0 ? item.votes.join('\n') : '-'}</td>
+              <td className="vote-results-column">
+                {item.votes.length > 0 ? (
+                  item.votes.map((vote, index) => (
+                    <div key={index}>
+                      <strong>{vote.question}</strong>
+                      <br />
+                      {vote.results}
+                      {index < item.votes.length - 1 && <br />} {/* Добавляем перенос строки между голосованиями */}
+                    </div>
+                  ))
+                ) : '-'}
+              </td>
               <td className="action-column">
                 {!item.completed && (
                   <>
