@@ -775,3 +775,35 @@ button:hover {
 .agenda-table .active-agenda-item {
   background-color: #e0ffe0 !important; /* Добавляем !important для теста */
 }
+
+
+/* Стили для иконки статуса */
+.status-icon {
+  cursor: pointer;
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.status-icon.online {
+  color: #34c759; /* Зеленый для онлайн */
+}
+
+.status-icon.offline {
+  color: #d93025; /* Красный для оффлайн */
+}
+
+
+
+
+.modal-buttons button:first-child {
+  background-color: #d93025; /* Красный для "Да" */
+  color: white;
+}
+
+.modal-buttons button:last-child {
+  background-color: #34c759; /* Зеленый для "Отмена" */
+  color: white;
+}
+
+
+

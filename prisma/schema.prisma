@@ -21,6 +21,7 @@ model User {
   agendaItems AgendaItem[] @relation
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
+  isOnline    Boolean   @default(false) // Новое поле для статуса онлайн/оффлайн
 }
 
 model Division {

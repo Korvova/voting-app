@@ -10,7 +10,7 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
   cors: {
     origin: 'http://217.114.10.226',
-    methods: ['GET', 'POST'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true
   },
@@ -19,8 +19,31 @@ const io = new Server(httpServer, {
 const prisma = new PrismaClient();
 const port = 5000;
 
-app.use(cors());
+// Явная настройка CORS для всех запросов
+app.use(cors({
+  origin: 'http://217.114.10.226',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+}));
 app.use(express.json());
+
+// Перенесенный маршрут из users.js
+app.post('/api/users/:id/disconnect', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const user = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: { isOnline: false },
+    });
+    res.json({ success: true, user });
+  } catch (error) {
+    console.error('Error disconnecting user:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
 
 // Подписка на уведомления PostgreSQL
 const pgClient = new Client({
@@ -28,9 +51,12 @@ const pgClient = new Client({
 });
 pgClient.connect();
 
-// Слушаем канал vote_result_channel
+// Слушаем каналы
 pgClient.query('LISTEN vote_result_channel');
-pgClient.on('notification', async (msg) => {
+pgClient.query('LISTEN meeting_status_channel');
+pgClient.query('LISTEN user_status_channel');
+
+pgClient.on('notification', (msg) => {
   if (msg.channel === 'vote_result_channel') {
     console.log('Received PostgreSQL notification for vote_result_channel:', msg.payload);
     const data = JSON.parse(msg.payload);
@@ -47,28 +73,7 @@ pgClient.on('notification', async (msg) => {
       console.log('Emitting vote-cancelled:', data);
       io.emit('vote-cancelled', data);
     }
-  }
-});
-
-// Слушаем канал meeting_status_channel
-pgClient.query('LISTEN meeting_status_channel');
-pgClient.on('notification', async (msg) => {
-  if (msg.channel === 'meeting_status_channel') {
-    console.log('Received PostgreSQL notification for meeting_status_channel:', msg.payload);
-    const data = JSON.parse(msg.payload);
-    io.emit('meeting-status-changed', data);
-    if (data.status === 'COMPLETED') {
-      io.emit('meeting-ended');
-    }
-  }
-});
-
-
-
-// Слушаем канал meeting_status_channel
-pgClient.query('LISTEN meeting_status_channel');
-pgClient.on('notification', async (msg) => {
-  if (msg.channel === 'meeting_status_channel') {
+  } else if (msg.channel === 'meeting_status_channel') {
     console.log('Received PostgreSQL notification for meeting_status_channel:', msg.payload);
     const data = JSON.parse(msg.payload);
     if (data.status) { // Уведомление для Meeting
@@ -85,18 +90,12 @@ pgClient.on('notification', async (msg) => {
         completed: data.completed
       });
     }
+  } else if (msg.channel === 'user_status_channel') {
+    console.log('Received PostgreSQL notification for user_status_channel:', msg.payload);
+    const data = JSON.parse(msg.payload);
+    io.emit('user-status-changed', { userId: data.id, isOnline: data.isOnline });
   }
 });
-
-
-
-
-
-
-
-
-
-
 
 // Тестовый маршрут для проверки API
 app.get('/api/health', (req, res) => {
@@ -129,6 +128,7 @@ app.get('/api/users', async (req, res) => {
       email: user.email,
       phone: user.phone,
       division: user.division ? user.division.name : 'Нет',
+      isOnline: user.isOnline
     })));
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -299,7 +299,7 @@ app.get('/api/meetings/active-for-user', async (req, res) => {
       },
       include: {
         divisions: {
-          include: { users: true }, // Подтягиваем пользователей для каждой Division
+          include: { users: true },
         },
       },
     });
@@ -335,7 +335,7 @@ app.get('/api/meetings/active-for-user', async (req, res) => {
               name: user.name,
               email: user.email,
             })),
-          })), // Возвращаем divisions как массив объектов с пользователями
+          })),
         };
       })
     );
@@ -347,13 +347,6 @@ app.get('/api/meetings/active-for-user', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-
-
-
-
-
-
 
 app.get('/api/meetings/:id', async (req, res) => {
   const { id } = req.params;
@@ -451,55 +444,34 @@ app.put('/api/meetings/:id', async (req, res) => {
   }
 });
 
-
-
-
-
-
-
-
-
 app.delete('/api/meetings/:id', async (req, res) => {
   const { id } = req.params;
   console.log(`Deleting meeting ${id}`);
   try {
     const meeting = await prisma.meeting.findUnique({ 
       where: { id: parseInt(id) },
-      include: { agendaItems: true } // Подтягиваем связанные AgendaItem
+      include: { agendaItems: true }
     });
     if (!meeting) {
       return res.status(404).json({ error: 'Meeting not found' });
     }
 
-    // Используем транзакцию для атомарного удаления
     await prisma.$transaction(async (prisma) => {
-      // 1. Находим все AgendaItem, связанные с Meeting
       const agendaItems = meeting.agendaItems;
-
-      // 2. Удаляем все Vote и VoteResult, связанные с каждым AgendaItem
       for (const agendaItem of agendaItems) {
-        // Удаляем Vote
         await prisma.vote.deleteMany({
           where: { agendaItemId: agendaItem.id },
         });
-
-        // Удаляем VoteResult
         await prisma.voteResult.deleteMany({
           where: { agendaItemId: agendaItem.id },
         });
       }
-
-      // 3. Удаляем все AgendaItem, связанные с Meeting
       await prisma.agendaItem.deleteMany({
         where: { meetingId: parseInt(id) },
       });
-
-      // 4. Удаляем все VoteResult, связанные с Meeting через meetingId
       await prisma.voteResult.deleteMany({
         where: { meetingId: parseInt(id) },
       });
-
-      // 5. Удаляем само Meeting
       await prisma.meeting.delete({
         where: { id: parseInt(id) },
       });
@@ -511,12 +483,6 @@ app.delete('/api/meetings/:id', async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 });
-
-
-
-
-
-
 
 app.post('/api/meetings/:id/archive', async (req, res) => {
   const { id } = req.params;
@@ -562,7 +528,6 @@ app.post('/api/vote', async (req, res) => {
           votesAbsent: voteResult.votesAbsent > 0 ? voteResult.votesAbsent - 1 : 0,
         },
       });
-      // Унифицируем формат createdAt
       const payload = {
         ...updatedVoteResult,
         createdAt: updatedVoteResult.createdAt.toISOString(),
@@ -577,29 +542,18 @@ app.post('/api/vote', async (req, res) => {
   }
 });
 
-
-
-
-
-
-//.................. Api для голосования
-
-
 app.post('/api/vote-by-result', async (req, res) => {
   const { userId, voteResultId, choice } = req.body;
   try {
-    // Проверяем входные данные
     if (!userId || !voteResultId || !['FOR', 'AGAINST', 'ABSTAIN'].includes(choice)) {
       return res.status(400).json({ error: 'Invalid request data: userId, voteResultId, and valid choice are required' });
     }
 
-    // Находим пользователя
     const user = await prisma.user.findUnique({ where: { email: userId } });
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    // Находим голосование
     const voteResult = await prisma.voteResult.findUnique({
       where: { id: parseInt(voteResultId) },
       include: { agendaItem: { include: { meeting: { include: { divisions: true } } } } },
@@ -608,9 +562,7 @@ app.post('/api/vote-by-result', async (req, res) => {
       return res.status(404).json({ error: 'Vote result not found' });
     }
 
-    // Используем транзакцию для атомарного обновления
     const result = await prisma.$transaction(async (prisma) => {
-      // Проверяем, есть ли уже голос пользователя для этого VoteResult
       const existingVote = await prisma.vote.findFirst({
         where: {
           userId: user.id,
@@ -620,7 +572,6 @@ app.post('/api/vote-by-result', async (req, res) => {
 
       let vote;
       if (existingVote) {
-        // Если голос существует, обновляем его
         vote = await prisma.vote.update({
           where: { id: existingVote.id },
           data: {
@@ -629,7 +580,6 @@ app.post('/api/vote-by-result', async (req, res) => {
           },
         });
       } else {
-        // Если голоса нет, создаём новый
         vote = await prisma.vote.create({
           data: {
             userId: user.id,
@@ -641,7 +591,6 @@ app.post('/api/vote-by-result', async (req, res) => {
         });
       }
 
-      // Пересчитываем счётчики в VoteResult
       const votes = await prisma.vote.findMany({
         where: { voteResultId: parseInt(voteResultId) },
       });
@@ -672,7 +621,6 @@ app.post('/api/vote-by-result', async (req, res) => {
       return { vote, updatedVoteResult };
     });
 
-    // Отправляем уведомление через Socket.IO
     const payload = {
       ...result.updatedVoteResult,
       createdAt: result.updatedVoteResult.createdAt.toISOString(),
@@ -686,14 +634,6 @@ app.post('/api/vote-by-result', async (req, res) => {
   }
 });
 
-
-
-
-
-
-
-
-// API для получения повесток
 app.get('/api/meetings/:id/agenda-items', async (req, res) => {
   const { id } = req.params;
   try {
@@ -701,7 +641,6 @@ app.get('/api/meetings/:id/agenda-items', async (req, res) => {
       where: { meetingId: parseInt(id) },
       include: { speaker: true },
       orderBy: { number: 'asc' },
-    
     });
     res.json(agendaItems.map(item => ({
       id: item.id,
@@ -742,31 +681,21 @@ app.post('/api/meetings/:id/agenda-items', async (req, res) => {
   }
 });
 
-
-
-
-
-
-
-
 app.put('/api/meetings/:id/agenda-items/:itemId', async (req, res) => {
   const { id, itemId } = req.params;
   const { number, title, speakerId, link, activeIssue, completed } = req.body;
   console.log(`Updating agenda item ${itemId} for meeting ${id}:`, req.body);
   try {
-    // Начинаем транзакцию
     const result = await prisma.$transaction([
-      // Сбрасываем activeIssue для всех других вопросов текущего заседания
       prisma.agendaItem.updateMany({
         where: {
           meetingId: parseInt(id),
-          id: { not: parseInt(itemId) }, // Исключаем текущий вопрос
+          id: { not: parseInt(itemId) },
         },
         data: {
           activeIssue: false,
         },
       }),
-      // Обновляем текущий вопрос
       prisma.agendaItem.update({
         where: { id: parseInt(itemId), meetingId: parseInt(id) },
         data: {
@@ -775,31 +704,17 @@ app.put('/api/meetings/:id/agenda-items/:itemId', async (req, res) => {
           speakerId: speakerId ? parseInt(speakerId) : null,
           link,
           activeIssue: activeIssue !== undefined ? activeIssue : undefined,
-          completed: completed !== undefined ? completed : undefined, // Добавляем поддержку completed
+          completed: completed !== undefined ? completed : undefined,
         },
       }),
     ]);
 
-    res.json(result[1]); // Возвращаем обновлённый вопрос
+    res.json(result[1]);
   } catch (error) {
     console.error('Error updating agenda item:', error);
     res.status(400).json({ error: error.message });
   }
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 app.delete('/api/meetings/:id/agenda-items/:itemId', async (req, res) => {
   const { id, itemId } = req.params;
@@ -821,7 +736,6 @@ app.delete('/api/meetings/:id/agenda-items/:itemId', async (req, res) => {
   }
 });
 
-// API для запуска голосования
 app.post('/api/start-vote', async (req, res) => {
   const { agendaItemId, question, duration } = req.body;
   try {
@@ -925,7 +839,6 @@ app.post('/api/start-vote', async (req, res) => {
           data: { voting: false },
         });
 
-        // Унифицируем формат createdAt
         const updatedPayload = {
           ...updatedVoteResult,
           createdAt: updatedVoteResult.createdAt.toISOString(),
@@ -941,7 +854,6 @@ app.post('/api/start-vote', async (req, res) => {
   }
 });
 
-// API для применения результатов голосования
 app.post('/api/vote-results/:id/apply', async (req, res) => {
   const { id } = req.params;
   try {
@@ -962,7 +874,6 @@ app.post('/api/vote-results/:id/apply', async (req, res) => {
       data: { voteStatus: 'APPLIED' },
     });
 
-    // Унифицируем формат createdAt
     const payload = {
       ...updatedVoteResult,
       createdAt: updatedVoteResult.createdAt.toISOString(),
@@ -975,7 +886,6 @@ app.post('/api/vote-results/:id/apply', async (req, res) => {
   }
 });
 
-// API для изменения статуса заседания
 app.post('/api/meetings/:id/status', async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
@@ -999,7 +909,6 @@ app.post('/api/meetings/:id/status', async (req, res) => {
   }
 });
 
-// API закрытия окна
 app.post('/api/vote-results/:id/cancel', async (req, res) => {
   const { id } = req.params;
   try {
@@ -1020,7 +929,6 @@ app.post('/api/vote-results/:id/cancel', async (req, res) => {
       data: { voteStatus: 'CANCELLED' },
     });
 
-    // Унифицируем формат createdAt
     const payload = {
       ...updatedVoteResult,
       createdAt: updatedVoteResult.createdAt.toISOString(),
@@ -1033,7 +941,6 @@ app.post('/api/vote-results/:id/cancel', async (req, res) => {
   }
 });
 
-// API для получения результатов голосования
 app.get('/api/vote-results/:agendaItemId', async (req, res) => {
   const { agendaItemId } = req.params;
   try {
@@ -1065,7 +972,6 @@ app.get('/api/vote-results', async (req, res) => {
   }
 });
 
-// Socket.IO соединения
 io.on('connection', (socket) => {
   console.log('A client connected:', socket.id);
   socket.on('disconnect', (reason) => {
