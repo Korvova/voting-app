@@ -110,6 +110,10 @@ app.post('/api/login', async (req, res) => {
     if (!user || user.password !== password) {
       return res.status(401).json({ success: false, error: 'Invalid email or password' });
     }
+    // Проверяем, авторизован ли пользователь (не админ)
+    if (!user.isAdmin && user.isOnline) {
+      return res.status(403).json({ success: false, error: 'Пользователь авторизован на другом устройстве' });
+    }
     // Обновляем статус пользователя на онлайн (триггер автоматически отправит уведомление)
     const updatedUser = await prisma.user.update({
       where: { email },

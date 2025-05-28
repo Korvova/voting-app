@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import './LoginPage.css';
 
-function LoginPage({ onLogin }) {
+function LoginPage({ onLogin, loginError }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -13,11 +13,8 @@ function LoginPage({ onLogin }) {
 
   return (
     <div className="app">
-
       <p className="title"> RMS - Система голосования </p>
-
-
-      <h1 className="title">   Вход</h1>
+      <h1 className="title">Вход</h1>
       <form className="login-form" onSubmit={handleLogin}>
         <div className="form-group">
           <label>Email</label>
@@ -39,10 +36,14 @@ function LoginPage({ onLogin }) {
         </div>
         <button type="submit">Войти</button>
       </form>
+      {loginError && (
+        <div className="error-message">
+          <p>{loginError}</p>
+        </div>
+      )}
       <div className="forgot-password" onClick={() => setShowModal(true)}>
         Забыли пароль?
       </div>
-
       {showModal && (
         <div className="modal">
           <div className="modal-content">

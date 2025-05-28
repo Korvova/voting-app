@@ -1,4 +1,4 @@
-import { Route, Routes, Navigate, useNavigate } from 'react-router-dom'; // Убираем Router
+import { Route, Routes, Navigate, useNavigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import AdminPanel from './pages/AdminPanel';
 import UserPage from './pages/UserPage';
@@ -13,6 +13,7 @@ function App() {
     const savedUser = localStorage.getItem('user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
+  const [loginError, setLoginError] = useState(null); // Добавляем состояние для ошибки
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -39,11 +40,10 @@ function App() {
 
     socket.on('user-status-changed', (data) => {
       console.log('User status changed in App.jsx:', data);
-      // Если текущий пользователь отключен, разлогиниваем его
       if (user && user.id === data.userId && !data.isOnline) {
         console.log('Current user disconnected by admin, logging out...');
         handleLogout();
-        navigate('/'); // Перенаправляем на главную
+        navigate('/');
       }
     });
 
@@ -54,13 +54,16 @@ function App() {
 
   const handleLogin = async (userData) => {
     try {
+      setLoginError(null); // Сбрасываем ошибку перед попыткой
       const response = await axios.post('http://217.114.10.226:5000/api/login', userData);
       if (response.data.success) {
         setUser(response.data.user);
       } else {
+        setLoginError(response.data.error); // Устанавливаем ошибку от сервера
         console.log('Login failed:', response.data.error);
       }
     } catch (error) {
+      setLoginError(error.response?.data?.error || 'Произошла ошибка при входе');
       console.log('Login error:', error.message);
     }
   };
@@ -76,7 +79,7 @@ function App() {
   };
 
   return (
-    <Routes> {/* Убираем <Router> */}
+    <Routes>
       <Route
         path="/"
         element={
@@ -87,7 +90,7 @@ function App() {
               <Navigate to="/user" />
             )
           ) : (
-            <LoginPage onLogin={handleLogin} />
+            <LoginPage onLogin={handleLogin} loginError={loginError} />
           )
         }
       />

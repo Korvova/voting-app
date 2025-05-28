@@ -1,3 +1,4 @@
+/* Существующие стили */
 .app {
   display: flex;
   flex-direction: column;
@@ -101,4 +102,16 @@ button:hover {
   width: auto;
   padding: 0.5rem 1rem;
   margin: 0 0.5rem;
+}
+
+/* Стиль для сообщения об ошибке */
+.error-message {
+  margin-top: 1rem;
+  color: #d93025; /* Красный цвет для ошибки */
+  text-align: center;
+  font-size: 1rem;
+}
+
+.error-message p {
+  margin: 0;
 }
