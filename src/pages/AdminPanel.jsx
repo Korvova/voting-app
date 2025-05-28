@@ -4,7 +4,12 @@ import DivisionsPage from './DivisionsPage';
 import MeetingsPage from './MeetingsPage';
 import MeetingControlList from './MeetingControlList';
 import MeetingControl from './MeetingControl';
-import ProtocolPage from './ProtocolPage'; // Импортируем ProtocolPage
+import ConfigPage from './ConfigPage';
+import VotingTemplatePage from './VotingTemplatePage';
+import VoteCalculationPage from './VoteCalculationPage';
+import BroadcastScreenPage from './BroadcastScreenPage';
+import LinkProfileWithIdPage from './LinkProfileWithIdPage'; // Новый компонент
+import ProtocolPage from './ProtocolPage';
 
 function AdminPanel({ user, onLogout }) {
   const navigate = useNavigate();
@@ -45,6 +50,12 @@ function AdminPanel({ user, onLogout }) {
         >
           Пульт Заседания
         </button>
+        <button
+          className={location.pathname.startsWith('/admin/config') ? 'active' : ''}
+          onClick={() => navigate('/admin/config')}
+        >
+          Конфигурация
+        </button>
       </nav>
       <div className="content">
         <Routes>
@@ -54,6 +65,13 @@ function AdminPanel({ user, onLogout }) {
           <Route path="/meetings/*" element={<MeetingsPage />} />
           <Route path="/control" element={<MeetingControlList />} />
           <Route path="/control/meeting/:id" element={<MeetingControl />} />
+          <Route path="/config" element={<ConfigPage />}>
+            <Route index element={<Navigate to="/admin/config/voting-template" />} />
+            <Route path="voting-template" element={<VotingTemplatePage />} />
+            <Route path="vote-calculation" element={<VoteCalculationPage />} />
+            <Route path="broadcast-screen" element={<BroadcastScreenPage />} />
+            <Route path="link-profile-with-id" element={<LinkProfileWithIdPage />} /> {/* Новый маршрут */}
+          </Route>
           <Route path="/protocol/:id" element={<ProtocolPage user={user} onLogout={onLogout} />} />
         </Routes>
       </div>
