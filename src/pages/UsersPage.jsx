@@ -200,7 +200,7 @@ function UsersPage() {
                     handleDisconnectUser(user);
                   }}
                 >
-                  *
+                  ●
                 </span>
               </td>
               <td>
