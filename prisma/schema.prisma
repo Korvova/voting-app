@@ -7,6 +7,11 @@ datasource db {
   url      = "postgresql://postgres:postgres@localhost:5432/voting?schema=public"
 }
 
+
+
+
+
+
 model User {
   id          Int       @id @default(autoincrement())
   email       String    @unique
@@ -82,6 +87,11 @@ model VoteResult {
   duration      Int?
   voteStatus    String     @default("PENDING")
   votes         Vote[]     @relation("VoteToVoteResult") // Связь один-ко-многим с Vote
+ 
+procedureId   Int?
+  procedure     VoteProcedure? @relation("VoteProcedureToVoteResult", fields: [procedureId], references: [id])
+  decision      String?   // Результат голосования: "Принято" или "Не принято"
+voteType      VoteType?  @default(OPEN) // тип голосования открытое закрытое
 }
 
 model Vote {
@@ -97,7 +107,23 @@ model Vote {
 }
 
 
+model VoteProcedure {
+  id           Int      @id @default(autoincrement())
+  name         String
+  conditions   Json
+  resultIfTrue String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  voteResults  VoteResult[] @relation("VoteProcedureToVoteResult") // Добавленное поле
+}
 
+
+model VoteTemplate {
+  id        Int      @id @default(autoincrement())
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
 
 
 
@@ -112,3 +138,14 @@ enum VoteChoice {
   AGAINST
   ABSTAIN
 }
+
+
+enum VoteType {
+  OPEN
+  CLOSED
+}
+
+
+
+
+

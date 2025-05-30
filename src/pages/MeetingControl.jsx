@@ -9,14 +9,14 @@ function MeetingControl() {
   const [status, setStatus] = useState('WAITING');
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [showStartWarningModal, setShowStartWarningModal] = useState(false);
-  const [voteData, setVoteData] = useState({ question: '', duration: '' });
+  const [voteData, setVoteData] = useState({ question: '', duration: '', procedureId: null });
   const [activeVote, setActiveVote] = useState(null);
   const [voteResults, setVoteResults] = useState(null);
   const [voteResultsError, setVoteResultsError] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
+  const [procedures, setProcedures] = useState([]);
   const socket = io('http://217.114.10.226:5000');
 
-  // Загрузка данных о заседании
   const fetchMeeting = async () => {
     try {
       const response = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}`);
@@ -29,11 +29,12 @@ function MeetingControl() {
           .filter(vote => vote.agendaItemId === item.id && vote.voteStatus === 'APPLIED')
           .map(vote => ({
             question: vote.question,
-            results: `За - ${vote.votesFor} |   Против - ${vote.votesAgainst} |   Воздержались - ${vote.votesAbstain} |  Не проголосовали - ${vote.votesAbsent}`, // Новый формат с | и пробелами
+            results: `За - ${vote.votesFor} | Против - ${vote.votesAgainst} | Воздержались - ${vote.votesAbstain} | Не проголосовали - ${vote.votesAbsent}`,
             votesFor: vote.votesFor,
             votesAgainst: vote.votesAgainst,
             votesAbstain: vote.votesAbstain,
             votesAbsent: vote.votesAbsent,
+            decision: vote.decision, // Добавляем поле decision
           }));
 
         return {
@@ -63,6 +64,7 @@ function MeetingControl() {
           votesAgainst: endedVote.votesAgainst,
           votesAbstain: endedVote.votesAbstain,
           votesAbsent: endedVote.votesAbsent,
+          decision: endedVote.decision, // Добавляем поле decision
         });
         const relatedAgendaItem = agendaItemsWithVotes.find(item => item.id === endedVote.agendaItemId);
         if (relatedAgendaItem) {
@@ -80,6 +82,15 @@ function MeetingControl() {
     }
   };
 
+  const fetchProcedures = async () => {
+    try {
+      const response = await axios.get('http://217.114.10.226:5000/api/vote-procedures');
+      setProcedures(response.data);
+    } catch (error) {
+      console.error('Error fetching procedures:', error);
+    }
+  };
+
   useEffect(() => {
     fetchMeeting();
     return () => {
@@ -87,7 +98,10 @@ function MeetingControl() {
     };
   }, [id]);
 
-  // Подписка на события Socket.IO
+  useEffect(() => {
+    fetchProcedures();
+  }, []);
+
   useEffect(() => {
     socket.on('new-vote-result', (voteData) => {
       console.log('Received new-vote-result:', voteData);
@@ -128,6 +142,7 @@ function MeetingControl() {
             votesAgainst: response.data.votesAgainst,
             votesAbstain: response.data.votesAbstain,
             votesAbsent: response.data.votesAbsent,
+            decision: response.data.decision, // Добавляем поле decision
           });
           setVoteResultsError(null);
           const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
@@ -201,7 +216,6 @@ function MeetingControl() {
     };
   }, [socket, activeVote, meeting, id]);
 
-  // Визуальный обратный отсчёт
   useEffect(() => {
     let timer;
     if (timeLeft !== null && timeLeft > 0) {
@@ -212,7 +226,6 @@ function MeetingControl() {
     return () => clearTimeout(timer);
   }, [timeLeft]);
 
-  // Изменение статуса заседания
   const handleStatusChange = async () => {
     try {
       if (status === 'WAITING') {
@@ -228,7 +241,6 @@ function MeetingControl() {
     }
   };
 
-  // Запуск голосования
   const handleStartVote = async (agendaItem) => {
     if (status === 'WAITING') {
       setShowStartWarningModal(true);
@@ -252,7 +264,7 @@ function MeetingControl() {
     }));
   };
 
-  // Завершение текущего вопроса повестки
+// Завершение текущего вопроса повестки
   const handleEndVote = async (agendaItem) => {
     try {
       setTimeLeft(null);
@@ -280,13 +292,11 @@ function MeetingControl() {
     }
   };
 
-  // Закрытие модального окна для запуска голосования
   const handleVoteModalClose = () => {
     setShowVoteModal(false);
-    setVoteData({ question: '', duration: '' });
+    setVoteData({ question: '', duration: '', procedureId: null });
   };
 
-  // Запуск голосования (отправка события)
   const handleVoteModalApply = async () => {
     if (!activeVote || !activeVote.id) {
       alert('Ошибка: не выбран вопрос повестки.');
@@ -302,11 +312,12 @@ function MeetingControl() {
     }
     try {
       const duration = parseInt(voteData.duration);
-      console.log('Sending start-vote request:', { agendaItemId: activeVote.id, question: voteData.question, duration });
+      console.log('Sending start-vote request:', { agendaItemId: activeVote.id, question: voteData.question, duration, procedureId: voteData.procedureId });
       await axios.post('http://217.114.10.226:5000/api/start-vote', {
         agendaItemId: activeVote.id,
         question: voteData.question,
         duration: duration,
+        procedureId: voteData.procedureId,
       });
       setTimeLeft(duration);
       socket.emit('new-vote-result', {
@@ -322,7 +333,6 @@ function MeetingControl() {
     }
   };
 
-  // Применение результатов голосования
   const handleVoteResultsApply = async () => {
     try {
       setMeeting({
@@ -333,7 +343,15 @@ function MeetingControl() {
                 ...item,
                 votes: [
                   ...item.votes,
-                  { question: voteResults.question, results: `За - ${voteResults.votesFor} | Против - ${voteResults.votesAgainst} | Воздержались - ${voteResults.votesAbstain} | Не проголосовали - ${voteResults.votesAbsent}`, votesFor: voteResults.votesFor, votesAgainst: voteResults.votesAgainst, votesAbstain: voteResults.votesAbstain, votesAbsent: voteResults.votesAbsent }
+                  { 
+                    question: voteResults.question, 
+                    results: `За - ${voteResults.votesFor} | Против - ${voteResults.votesAgainst} | Воздержались - ${voteResults.votesAbstain} | Не проголосовали - ${voteResults.votesAbsent}`,
+                    votesFor: voteResults.votesFor,
+                    votesAgainst: voteResults.votesAgainst,
+                    votesAbstain: voteResults.votesAbstain,
+                    votesAbsent: voteResults.votesAbsent,
+                    decision: voteResults.decision // Добавляем поле decision
+                  }
                 ],
               }
             : item
@@ -348,7 +366,6 @@ function MeetingControl() {
     }
   };
 
-  // Отмена результатов голосования
   const handleVoteResultsCancel = async () => {
     try {
       if (voteResults && voteResults.id) {
@@ -364,19 +381,16 @@ function MeetingControl() {
     }
   };
 
-  // Обработка ввода данных для голосования
   const handleVoteInputChange = (e) => {
     const { name, value } = e.target;
     setVoteData({ ...voteData, [name]: value });
   };
 
-  // Запуск заседания из модального окна предупреждения
   const handleStartMeetingFromModal = () => {
     setStatus('IN_PROGRESS');
     setShowStartWarningModal(false);
   };
 
-  // Отмена предупреждения о запуске
   const handleCancelStartWarning = () => {
     setShowStartWarningModal(false);
   };
@@ -427,6 +441,12 @@ function MeetingControl() {
                         <span style={{ backgroundColor: vote.votesAgainst === maxVotes ? 'darkgreen' : 'none', color: vote.votesAgainst === maxVotes ? 'white' : 'inherit' }}>{vote.results.split(' | ')[1]}</span> | 
                         <span style={{ backgroundColor: vote.votesAbstain === maxVotes ? 'darkgreen' : 'none', color: vote.votesAbstain === maxVotes ? 'white' : 'inherit' }}>{vote.results.split(' | ')[2]}</span> | 
                         <span style={{ backgroundColor: vote.votesAbsent === maxVotes ? 'darkgreen' : 'none', color: vote.votesAbsent === maxVotes ? 'white' : 'inherit' }}>{vote.results.split(' | ')[3]}</span>
+                        {vote.decision && (
+                          <>
+                            <br />
+                            <strong>Решение: {vote.decision}</strong>
+                          </>
+                        )}
                         {index < item.votes.length - 1 && <br />}
                       </div>
                     );
@@ -484,6 +504,9 @@ function MeetingControl() {
           <p>Против: {voteResults.votesAgainst}</p>
           <p>Воздержались: {voteResults.votesAbstain}</p>
           <p>Не проголосовали: {voteResults.votesAbsent}</p>
+          {voteResults.decision && (
+            <p><strong>Решение: {voteResults.decision}</strong></p>
+          )}
           <div className="action-buttons">
             <button onClick={handleVoteResultsApply}>Применить</button>
             <button onClick={handleVoteResultsCancel}>Отмена</button>
@@ -513,6 +536,21 @@ function MeetingControl() {
                 onChange={handleVoteInputChange}
                 required
               />
+            </div>
+            <div className="form-group">
+              <label>Процедура подсчета голосов</label>
+              <select
+                name="procedureId"
+                value={voteData.procedureId || ''}
+                onChange={handleVoteInputChange}
+              >
+                <option value="">Выберите процедуру</option>
+                {procedures.map(procedure => (
+                  <option key={procedure.id} value={procedure.id}>
+                    {procedure.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <button onClick={handleVoteModalApply}>Запуск</button>
             <button onClick={handleVoteModalClose}>Отмена</button>

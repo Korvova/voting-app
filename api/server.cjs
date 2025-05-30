@@ -703,6 +703,94 @@ app.get('/api/meetings/:id/agenda-items', async (req, res) => {
   }
 });
 
+
+
+
+
+
+
+
+// API для получения списка процедур подсчета голосов........................................................
+app.get('/api/vote-procedures', async (req, res) => {
+  try {
+    const procedures = await prisma.voteProcedure.findMany();
+    res.json(procedures);
+  } catch (error) {
+    console.error('Error fetching vote procedures:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// API для создания новой процедуры
+app.post('/api/vote-procedures', async (req, res) => {
+  const { name, conditions, resultIfTrue } = req.body;
+  try {
+    if (!name || !conditions || !resultIfTrue) {
+      return res.status(400).json({ error: 'Name, conditions, and resultIfTrue are required' });
+    }
+    const procedure = await prisma.voteProcedure.create({
+      data: {
+        name,
+        conditions,
+        resultIfTrue,
+      },
+    });
+    res.json(procedure);
+  } catch (error) {
+    console.error('Error creating vote procedure:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// API для обновления процедуры
+app.put('/api/vote-procedures/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, conditions, resultIfTrue } = req.body;
+  try {
+    const procedure = await prisma.voteProcedure.update({
+      where: { id: parseInt(id) },
+      data: {
+        name,
+        conditions,
+        resultIfTrue,
+      },
+    });
+    res.json(procedure);
+  } catch (error) {
+    console.error('Error updating vote procedure:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// API для удаления процедуры
+app.delete('/api/vote-procedures/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.voteProcedure.delete({
+      where: { id: parseInt(id) },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting vote procedure:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 app.post('/api/meetings/:id/agenda-items', async (req, res) => {
   const { id } = req.params;
   const { number, title, speakerId, link } = req.body;
@@ -781,14 +869,281 @@ app.delete('/api/meetings/:id/agenda-items/:itemId', async (req, res) => {
   }
 });
 
-app.post('/api/start-vote', async (req, res) => {
-  const { agendaItemId, question, duration } = req.body;
+
+
+
+
+//........................
+// Функция для вычисления decision
+const calculateDecision = async (voteResultId) => {
   try {
-    console.log('Received start-vote request data:', { agendaItemId, question, duration });
+    console.log('Calculating decision for voteResultId:', voteResultId);
+
+    // Находим VoteResult по voteResultId
+    const voteResult = await prisma.voteResult.findUnique({
+      where: { id: Number(voteResultId) },
+      include: { meeting: { include: { divisions: true } } },
+    });
+    if (!voteResult) {
+      throw new Error('VoteResult not found');
+    }
+
+    // Извлекаем данные из VoteResult
+    const meetingId = voteResult.meetingId;
+    const votesFor = voteResult.votesFor;
+    const votesAgainst = voteResult.votesAgainst;
+    const votesAbstain = voteResult.votesAbstain;
+    const votesAbsent = voteResult.votesAbsent;
+    const procedureId = voteResult.procedureId;
+
+    // Находим всех участников собрания (пользователей из связанных дивизионов, исключая админов)
+    const participants = await prisma.user.findMany({
+      where: {
+        divisionId: { in: voteResult.meeting.divisions ? voteResult.meeting.divisions.map(d => d.id) : [] },
+        isAdmin: false,
+      },
+    });
+    const totalParticipants = participants.length;
+
+    // Находим онлайн-участников (с isOnline: true)
+    const onlineParticipants = await prisma.user.findMany({
+      where: {
+        divisionId: { in: voteResult.meeting.divisions ? voteResult.meeting.divisions.map(d => d.id) : [] },
+        isAdmin: false,
+        isOnline: true,
+      },
+    });
+    const totalOnlineParticipants = onlineParticipants.length;
+
+    // Проверяем, что сумма голосов не превышает общее число участников
+    const totalVotes = votesFor + votesAgainst + votesAbstain + votesAbsent;
+    if (totalVotes > totalParticipants) {
+      throw new Error(`Total votes (${totalVotes}) cannot exceed total participants (${totalParticipants})`);
+    }
+
+    // Находим процедуру по её ID
+    const procedure = await prisma.voteProcedure.findUnique({
+      where: { id: procedureId },
+    });
+    if (!procedure) {
+      throw new Error('Procedure not found');
+    }
+
+    const conditions = procedure.conditions;
+    const resultIfTrue = procedure.resultIfTrue;
+    console.log('Extracted procedure data:', { conditions, resultIfTrue });
+
+    // Проверяем, что условия существуют и являются массивом
+    if (!conditions || !Array.isArray(conditions) || conditions.length === 0) {
+      throw new Error('Procedure conditions are invalid or empty');
+    }
+
+    // Собираем данные для вычисления условий
+    const totalVotesCount = votesFor + votesAgainst + votesAbstain;
+
+    console.log('Prepared data:', { totalParticipants, totalOnlineParticipants, totalVotes: totalVotesCount, votesFor, votesAgainst, votesAbstain, votesAbsent });
+
+    // Функция для вычисления значения выражения
+    const evaluateExpression = (elements) => {
+      const stack = [];
+      const operators = [];
+
+      for (let i = 0; i < elements.length; i++) {
+        const element = elements[i];
+        const value = typeof element === 'string' ? element : element.value;
+        const type = typeof element === 'string' ? 'select' : element.type;
+
+        if (value === '(') {
+          operators.push(value);
+        } else if (value === ')') {
+          while (operators.length > 0 && operators[operators.length - 1] !== '(') {
+            const op = operators.pop();
+            if (['И', 'Или', 'Иначе', 'Кроме', 'AND', 'OR'].includes(op)) {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === 'И' || op === 'AND') stack.push(a && b);
+              else if (op === 'Или' || op === 'OR') stack.push(a || b);
+              else if (op === 'Иначе') stack.push(a !== b);
+              else if (op === 'Кроме') stack.push(a && !b);
+            } else if (['>', '<', '>=', '<=', '='].includes(op)) {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === '>') stack.push(a > b);
+              else if (op === '>=') stack.push(a >= b);
+              else if (op === '<') stack.push(a < b);
+              else if (op === '<=') stack.push(a <= b);
+              else if (op === '=') stack.push(a === b);
+            } else {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === '*') stack.push(a * b);
+              else if (op === '+') stack.push(a + b);
+              else if (op === '-') stack.push(a - b);
+              else if (op === '/') stack.push(a / b);
+            }
+          }
+          operators.pop(); // Удаляем '('
+        } else if (['И', 'Или', 'Иначе', 'Кроме', 'AND', 'OR', '>', '<', '>=', '<=', '=', '*', '+', '-', '/'].includes(value)) {
+          while (
+            operators.length > 0 &&
+            operators[operators.length - 1] !== '(' &&
+            (
+              (['И', 'Или', 'Иначе', 'Кроме', 'AND', 'OR'].includes(value) && ['>', '<', '>=', '<=', '=', '*', '+', '-', '/'].includes(operators[operators.length - 1])) ||
+              (['>', '<', '>=', '<=', '='].includes(value) && ['*', '+', '-', '/'].includes(operators[operators.length - 1]))
+            )
+          ) {
+            const op = operators.pop();
+            if (['И', 'Или', 'Иначе', 'Кроме', 'AND', 'OR'].includes(op)) {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === 'И' || op === 'AND') stack.push(a && b);
+              else if (op === 'Или' || op === 'OR') stack.push(a || b);
+              else if (op === 'Иначе') stack.push(a !== b);
+              else if (op === 'Кроме') stack.push(a && !b);
+            } else if (['>', '<', '>=', '<=', '='].includes(op)) {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === '>') stack.push(a > b);
+              else if (op === '>=') stack.push(a >= b);
+              else if (op === '<') stack.push(a < b);
+              else if (op === '<=') stack.push(a <= b);
+              else if (op === '=') stack.push(a === b);
+            } else {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === '*') stack.push(a * b);
+              else if (op === '+') stack.push(a + b);
+              else if (op === '-') stack.push(a - b);
+              else if (op === '/') stack.push(a / b);
+            }
+          }
+          operators.push(value);
+        } else {
+          let numValue;
+          if (value === 'Все пользователи заседания') {
+            numValue = totalParticipants;
+          } else if (value === 'Все пользователи онлайн') {
+            numValue = totalOnlineParticipants;
+          } else if (value === 'Всего голосов') {
+            numValue = totalVotesCount;
+          } else if (value === 'За') {
+            numValue = votesFor;
+          } else if (value === 'Против') {
+            numValue = votesAgainst;
+          } else if (value === 'Воздержались') {
+            numValue = votesAbstain;
+          } else if (value === 'Не голосовали') {
+            numValue = votesAbsent;
+          } else if (type === 'input') {
+            numValue = parseFloat(value);
+          }
+          stack.push(numValue);
+        }
+      }
+
+      while (operators.length > 0) {
+        const op = operators.pop();
+        if (op === '(') continue;
+        if (['И', 'Или', 'Иначе', 'Кроме', 'AND', 'OR'].includes(op)) {
+          const b = stack.pop();
+          const a = stack.pop();
+          if (op === 'И' || op === 'AND') stack.push(a && b);
+          else if (op === 'Или' || op === 'OR') stack.push(a || b);
+          else if (op === 'Иначе') stack.push(a !== b);
+          else if (op === 'Кроме') stack.push(a && !b);
+        } else if (['>', '<', '>=', '<=', '='].includes(op)) {
+          const b = stack.pop();
+          const a = stack.pop();
+          if (op === '>') stack.push(a > b);
+          else if (op === '>=') stack.push(a >= b);
+          else if (op === '<') stack.push(a < b);
+          else if (op === '<=') stack.push(a <= b);
+          else if (op === '=') stack.push(a === b);
+        } else {
+          const b = stack.pop();
+          const a = stack.pop();
+          if (op === '*') stack.push(a * b);
+          else if (op === '+') stack.push(a + b);
+          else if (op === '-') stack.push(a - b);
+          else if (op === '/') stack.push(a / b);
+        }
+      }
+
+      return stack.pop();
+    };
+
+    // Логика вычисления decision
+    let finalConditionMet = true;
+
+    for (let blockIndex = 0; blockIndex < conditions.length; blockIndex++) {
+      const conditionBlock = conditions[blockIndex];
+      const elements = conditionBlock.elements;
+      console.log('Extracted elements:', elements);
+
+      // Вычисляем первое выражение
+      let condition1Met = evaluateExpression(elements);
+      console.log('Condition 1 result:', condition1Met);
+
+      // Проверяем наличие operator и elements2
+      let condition2Met = true;
+      if (conditionBlock.operator && conditionBlock.elements2) {
+        const elements2 = conditionBlock.elements2;
+        console.log('Extracted elements2:', elements2);
+        condition2Met = evaluateExpression(elements2);
+        console.log('Condition 2 result:', condition2Met);
+
+        // Комбинируем условия внутри блока
+        if (conditionBlock.operator === "И" || conditionBlock.operator === "AND") {
+          condition1Met = condition1Met && condition2Met;
+        } else if (conditionBlock.operator === "Или" || conditionBlock.operator === "OR") {
+          condition1Met = condition1Met || condition2Met;
+        } else if (conditionBlock.operator === "Иначе") {
+          condition1Met = condition1Met !== condition2Met;
+        } else if (conditionBlock.operator === "Кроме") {
+          condition1Met = condition1Met && !condition2Met;
+        }
+      }
+
+      // Комбинируем с предыдущими блоками
+      if (blockIndex === 0) {
+        finalConditionMet = condition1Met;
+      } else {
+        const prevOperator = conditions[blockIndex - 1].operator;
+        if (prevOperator === "И" || prevOperator === "AND") {
+          finalConditionMet = finalConditionMet && condition1Met;
+        } else if (prevOperator === "Или" || prevOperator === "OR") {
+          finalConditionMet = finalConditionMet || condition1Met;
+        } else if (prevOperator === "Иначе") {
+          finalConditionMet = finalConditionMet !== condition1Met;
+        } else if (prevOperator === "Кроме") {
+          finalConditionMet = finalConditionMet && !condition1Met;
+        }
+      }
+    }
+
+    // Устанавливаем decision
+    const decision = finalConditionMet ? resultIfTrue : (resultIfTrue === "Принято" ? "Не принято" : "Принято");
+    console.log('Computed decision:', decision);
+
+    return decision;
+  } catch (error) {
+    console.error('Error calculating decision:', error.message);
+    throw error;
+  }
+};
+
+// Обновлённый маршрут /api/start-vote
+app.post('/api/start-vote', async (req, res) => {
+  const { agendaItemId, question, duration, procedureId } = req.body;
+  try {
+    console.log('Received start-vote request data:', { agendaItemId, question, duration, procedureId });
 
     if (!agendaItemId || !question || !duration || isNaN(duration) || duration <= 0) {
       throw new Error('Invalid request data: agendaItemId, question, and duration (positive number) are required');
     }
+
+    // Устанавливаем procedureId по умолчанию, если он не передан
+    const finalProcedureId = procedureId ? parseInt(procedureId) : 10;
 
     const durationInMs = duration * 1000;
     const createdAt = new Date();
@@ -832,6 +1187,7 @@ app.post('/api/start-vote', async (req, res) => {
         createdAt: createdAt,
         duration: duration,
         voteStatus: 'PENDING',
+        procedureId: finalProcedureId,
       },
     });
 
@@ -871,11 +1227,16 @@ app.post('/api/start-vote', async (req, res) => {
 
         console.log('Total Participants:', participants.length, 'Voted Count:', votedUserIds.length, 'Not Voted Count:', notVotedCount);
 
+        // Вызываем функцию calculateDecision для вычисления decision
+        const decision = await calculateDecision(finalVoteResult.id);
+        console.log('Decision calculated:', decision);
+
         const updatedVoteResult = await prisma.voteResult.update({
           where: { id: finalVoteResult.id },
           data: {
             voteStatus: 'ENDED',
             votesAbsent: notVotedCount,
+            decision: decision, // Сохраняем decision
           },
         });
 
@@ -898,6 +1259,301 @@ app.post('/api/start-vote', async (req, res) => {
     res.status(400).json({ success: false, error: error.message });
   }
 });
+
+
+
+
+
+
+
+
+app.get('/api/vote-procedures/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const procedure = await prisma.voteProcedure.findUnique({
+      where: { id: parseInt(id) },
+    });
+    if (!procedure) {
+      return res.status(404).json({ error: 'Procedure not found' });
+    }
+    res.json(procedure);
+  } catch (error) {
+    console.error('Error fetching vote procedure:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+
+
+// Подсчет голосов ..................................................................
+app.post('/api/calculate-decision', async (req, res) => {
+  const { voteResultId } = req.body;
+  try {
+    console.log('Received calculate-decision request data:', { voteResultId });
+
+    // Проверяем, что voteResultId передан
+    if (!voteResultId) {
+      throw new Error('Invalid request data: voteResultId is required');
+    }
+
+    // Находим VoteResult по voteResultId
+    const voteResult = await prisma.voteResult.findUnique({
+      where: { id: Number(voteResultId) },
+      include: { meeting: { include: { divisions: true } } },
+    });
+    if (!voteResult) {
+      throw new Error('VoteResult not found');
+    }
+
+    // Извлекаем данные из VoteResult
+    const meetingId = voteResult.meetingId;
+    const votesFor = voteResult.votesFor;
+    const votesAgainst = voteResult.votesAgainst;
+    const votesAbstain = voteResult.votesAbstain;
+    const votesAbsent = voteResult.votesAbsent;
+    const procedureId = voteResult.procedureId;
+
+    // Находим всех участников собрания (пользователей из связанных дивизионов, исключая админов)
+    const participants = await prisma.user.findMany({
+      where: {
+        divisionId: { in: voteResult.meeting.divisions ? voteResult.meeting.divisions.map(d => d.id) : [] },
+        isAdmin: false,
+      },
+    });
+    const totalParticipants = participants.length;
+
+    // Находим онлайн-участников (с isOnline: true)
+    const onlineParticipants = await prisma.user.findMany({
+      where: {
+        divisionId: { in: voteResult.meeting.divisions ? voteResult.meeting.divisions.map(d => d.id) : [] },
+        isAdmin: false,
+        isOnline: true,
+      },
+    });
+    const totalOnlineParticipants = onlineParticipants.length;
+
+    // Проверяем, что сумма голосов не превышает общее число участников
+    const totalVotes = votesFor + votesAgainst + votesAbstain + votesAbsent;
+    if (totalVotes > totalParticipants) {
+      throw new Error(`Total votes (${totalVotes}) cannot exceed total participants (${totalParticipants})`);
+    }
+
+    // Находим процедуру по её ID
+    const procedure = await prisma.voteProcedure.findUnique({
+      where: { id: procedureId },
+    });
+    if (!procedure) {
+      throw new Error('Procedure not found');
+    }
+
+    const conditions = procedure.conditions;
+    const resultIfTrue = procedure.resultIfTrue;
+    console.log('Extracted procedure data:', { conditions, resultIfTrue });
+
+    // Проверяем, что условия существуют и являются массивом
+    if (!conditions || !Array.isArray(conditions) || conditions.length === 0) {
+      throw new Error('Procedure conditions are invalid or empty');
+    }
+
+    // Собираем данные для вычисления условий
+    const totalVotesCount = votesFor + votesAgainst + votesAbstain;
+
+    console.log('Prepared data:', { totalParticipants, totalOnlineParticipants, totalVotes: totalVotesCount, votesFor, votesAgainst, votesAbstain, votesAbsent });
+
+    // Функция для вычисления значения выражения
+    const evaluateExpression = (elements) => {
+      const stack = [];
+      const operators = [];
+
+      for (let i = 0; i < elements.length; i++) {
+        const element = elements[i];
+        const value = typeof element === 'string' ? element : element.value;
+        const type = typeof element === 'string' ? 'select' : element.type;
+
+        if (value === '(') {
+          operators.push(value);
+        } else if (value === ')') {
+          while (operators.length > 0 && operators[operators.length - 1] !== '(') {
+            const op = operators.pop();
+            if (['И', 'Или', 'Иначе', 'Кроме', 'AND', 'OR'].includes(op)) {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === 'И' || op === 'AND') stack.push(a && b);
+              else if (op === 'Или' || op === 'OR') stack.push(a || b);
+              else if (op === 'Иначе') stack.push(a !== b);
+              else if (op === 'Кроме') stack.push(a && !b);
+            } else if (['>', '<', '>=', '<=', '='].includes(op)) {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === '>') stack.push(a > b);
+              else if (op === '>=') stack.push(a >= b);
+              else if (op === '<') stack.push(a < b);
+              else if (op === '<=') stack.push(a <= b);
+              else if (op === '=') stack.push(a === b);
+            } else {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === '*') stack.push(a * b);
+              else if (op === '+') stack.push(a + b);
+              else if (op === '-') stack.push(a - b);
+              else if (op === '/') stack.push(a / b);
+            }
+          }
+          operators.pop(); // Удаляем '('
+        } else if (['И', 'Или', 'Иначе', 'Кроме', 'AND', 'OR', '>', '<', '>=', '<=', '=', '*', '+', '-', '/'].includes(value)) {
+          while (
+            operators.length > 0 &&
+            operators[operators.length - 1] !== '(' &&
+            (
+              (['И', 'Или', 'Иначе', 'Кроме', 'AND', 'OR'].includes(value) && ['>', '<', '>=', '<=', '=', '*', '+', '-', '/'].includes(operators[operators.length - 1])) ||
+              (['>', '<', '>=', '<=', '='].includes(value) && ['*', '+', '-', '/'].includes(operators[operators.length - 1]))
+            )
+          ) {
+            const op = operators.pop();
+            if (['И', 'Или', 'Иначе', 'Кроме', 'AND', 'OR'].includes(op)) {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === 'И' || op === 'AND') stack.push(a && b);
+              else if (op === 'Или' || op === 'OR') stack.push(a || b);
+              else if (op === 'Иначе') stack.push(a !== b);
+              else if (op === 'Кроме') stack.push(a && !b);
+            } else if (['>', '<', '>=', '<=', '='].includes(op)) {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === '>') stack.push(a > b);
+              else if (op === '>=') stack.push(a >= b);
+              else if (op === '<') stack.push(a < b);
+              else if (op === '<=') stack.push(a <= b);
+              else if (op === '=') stack.push(a === b);
+            } else {
+              const b = stack.pop();
+              const a = stack.pop();
+              if (op === '*') stack.push(a * b);
+              else if (op === '+') stack.push(a + b);
+              else if (op === '-') stack.push(a - b);
+              else if (op === '/') stack.push(a / b);
+            }
+          }
+          operators.push(value);
+        } else {
+          let numValue;
+          if (value === 'Все пользователи заседания') {
+            numValue = totalParticipants;
+          } else if (value === 'Все пользователи онлайн') {
+            numValue = totalOnlineParticipants;
+          } else if (value === 'Всего голосов') {
+            numValue = totalVotesCount;
+          } else if (value === 'За') {
+            numValue = votesFor;
+          } else if (value === 'Против') {
+            numValue = votesAgainst;
+          } else if (value === 'Воздержались') {
+            numValue = votesAbstain;
+          } else if (value === 'Не голосовали') {
+            numValue = votesAbsent;
+          } else if (type === 'input') {
+            numValue = parseFloat(value);
+          }
+          stack.push(numValue);
+        }
+      }
+
+      while (operators.length > 0) {
+        const op = operators.pop();
+        if (op === '(') continue;
+        if (['И', 'Или', 'Иначе', 'Кроме', 'AND', 'OR'].includes(op)) {
+          const b = stack.pop();
+          const a = stack.pop();
+          if (op === 'И' || op === 'AND') stack.push(a && b);
+          else if (op === 'Или' || op === 'OR') stack.push(a || b);
+          else if (op === 'Иначе') stack.push(a !== b);
+          else if (op === 'Кроме') stack.push(a && !b);
+        } else if (['>', '<', '>=', '<=', '='].includes(op)) {
+          const b = stack.pop();
+          const a = stack.pop();
+          if (op === '>') stack.push(a > b);
+          else if (op === '>=') stack.push(a >= b);
+          else if (op === '<') stack.push(a < b);
+          else if (op === '<=') stack.push(a <= b);
+          else if (op === '=') stack.push(a === b);
+        } else {
+          const b = stack.pop();
+          const a = stack.pop();
+          if (op === '*') stack.push(a * b);
+          else if (op === '+') stack.push(a + b);
+          else if (op === '-') stack.push(a - b);
+          else if (op === '/') stack.push(a / b);
+        }
+      }
+
+      return stack.pop();
+    };
+
+    // Логика вычисления decision
+    let finalConditionMet = true;
+
+    for (let blockIndex = 0; blockIndex < conditions.length; blockIndex++) {
+      const conditionBlock = conditions[blockIndex];
+      const elements = conditionBlock.elements;
+      console.log('Extracted elements:', elements);
+
+      // Вычисляем первое выражение
+      let condition1Met = evaluateExpression(elements);
+      console.log('Condition 1 result:', condition1Met);
+
+      // Проверяем наличие operator и elements2
+      let condition2Met = true;
+      if (conditionBlock.operator && conditionBlock.elements2) {
+        const elements2 = conditionBlock.elements2;
+        console.log('Extracted elements2:', elements2);
+        condition2Met = evaluateExpression(elements2);
+        console.log('Condition 2 result:', condition2Met);
+
+        // Комбинируем условия внутри блока
+        if (conditionBlock.operator === "И" || conditionBlock.operator === "AND") {
+          condition1Met = condition1Met && condition2Met;
+        } else if (conditionBlock.operator === "Или" || conditionBlock.operator === "OR") {
+          condition1Met = condition1Met || condition2Met;
+        } else if (conditionBlock.operator === "Иначе") {
+          condition1Met = condition1Met !== condition2Met;
+        } else if (conditionBlock.operator === "Кроме") {
+          condition1Met = condition1Met && !condition2Met;
+        }
+      }
+
+      // Комбинируем с предыдущими блоками
+      if (blockIndex === 0) {
+        finalConditionMet = condition1Met;
+      } else {
+        const prevOperator = conditions[blockIndex - 1].operator;
+        if (prevOperator === "И" || prevOperator === "AND") {
+          finalConditionMet = finalConditionMet && condition1Met;
+        } else if (prevOperator === "Или" || prevOperator === "OR") {
+          finalConditionMet = finalConditionMet || condition1Met;
+        } else if (prevOperator === "Иначе") {
+          finalConditionMet = finalConditionMet !== condition1Met;
+        } else if (prevOperator === "Кроме") {
+          finalConditionMet = finalConditionMet && !condition1Met;
+        }
+      }
+    }
+
+    // Устанавливаем decision
+    const decision = finalConditionMet ? resultIfTrue : (resultIfTrue === "Принято" ? "Не принято" : "Принято");
+    console.log('Computed decision:', decision);
+
+    // Возвращаем результат
+    res.json({ decision });
+  } catch (error) {
+    console.error('Error calculating decision:', error.message);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+
+
 
 app.post('/api/vote-results/:id/apply', async (req, res) => {
   const { id } = req.params;
