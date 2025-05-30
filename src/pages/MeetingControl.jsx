@@ -9,12 +9,13 @@ function MeetingControl() {
   const [status, setStatus] = useState('WAITING');
   const [showVoteModal, setShowVoteModal] = useState(false);
   const [showStartWarningModal, setShowStartWarningModal] = useState(false);
-  const [voteData, setVoteData] = useState({ question: '', duration: '', procedureId: null });
+  const [voteData, setVoteData] = useState({ question: '', duration: '', procedureId: null, voteType: 'OPEN', templateId: '' });
   const [activeVote, setActiveVote] = useState(null);
   const [voteResults, setVoteResults] = useState(null);
   const [voteResultsError, setVoteResultsError] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
   const [procedures, setProcedures] = useState([]);
+  const [voteTemplates, setVoteTemplates] = useState([]); // Состояние для шаблонов
   const socket = io('http://217.114.10.226:5000');
 
   const fetchMeeting = async () => {
@@ -34,7 +35,7 @@ function MeetingControl() {
             votesAgainst: vote.votesAgainst,
             votesAbstain: vote.votesAbstain,
             votesAbsent: vote.votesAbsent,
-            decision: vote.decision, // Добавляем поле decision
+            decision: vote.decision,
           }));
 
         return {
@@ -64,7 +65,7 @@ function MeetingControl() {
           votesAgainst: endedVote.votesAgainst,
           votesAbstain: endedVote.votesAbstain,
           votesAbsent: endedVote.votesAbsent,
-          decision: endedVote.decision, // Добавляем поле decision
+          decision: endedVote.decision,
         });
         const relatedAgendaItem = agendaItemsWithVotes.find(item => item.id === endedVote.agendaItemId);
         if (relatedAgendaItem) {
@@ -91,8 +92,18 @@ function MeetingControl() {
     }
   };
 
+  const fetchVoteTemplates = async () => {
+    try {
+      const response = await axios.get('http://217.114.10.226:5000/api/vote-templates');
+      setVoteTemplates(response.data);
+    } catch (error) {
+      console.error('Error fetching vote templates:', error);
+    }
+  };
+
   useEffect(() => {
     fetchMeeting();
+    fetchVoteTemplates();
     return () => {
       socket.disconnect();
     };
@@ -142,7 +153,7 @@ function MeetingControl() {
             votesAgainst: response.data.votesAgainst,
             votesAbstain: response.data.votesAbstain,
             votesAbsent: response.data.votesAbsent,
-            decision: response.data.decision, // Добавляем поле decision
+            decision: response.data.decision,
           });
           setVoteResultsError(null);
           const agendaResponse = await axios.get(`http://217.114.10.226:5000/api/meetings/${id}/agenda-items`);
@@ -264,7 +275,7 @@ function MeetingControl() {
     }));
   };
 
-// Завершение текущего вопроса повестки
+  // Завершение текущего вопроса повестки
   const handleEndVote = async (agendaItem) => {
     try {
       setTimeLeft(null);
@@ -294,7 +305,7 @@ function MeetingControl() {
 
   const handleVoteModalClose = () => {
     setShowVoteModal(false);
-    setVoteData({ question: '', duration: '', procedureId: null });
+    setVoteData({ question: '', duration: '', procedureId: null, voteType: 'OPEN', templateId: '' });
   };
 
   const handleVoteModalApply = async () => {
@@ -302,9 +313,16 @@ function MeetingControl() {
       alert('Ошибка: не выбран вопрос повестки.');
       return;
     }
-    if (!voteData.question) {
-      alert('Пожалуйста, укажите вопрос голосования.');
+    let finalQuestion = voteData.question;
+    if (!voteData.templateId && !voteData.question) {
+      alert('Пожалуйста, укажите вопрос голосования или выберите шаблон.');
       return;
+    }
+    if (voteData.templateId) {
+      const selectedTemplate = voteTemplates.find(template => template.id === parseInt(voteData.templateId));
+      if (selectedTemplate) {
+        finalQuestion = selectedTemplate.title;
+      }
     }
     if (!voteData.duration || parseInt(voteData.duration) <= 0) {
       alert('Пожалуйста, укажите время голосования (больше 0 секунд).');
@@ -312,17 +330,18 @@ function MeetingControl() {
     }
     try {
       const duration = parseInt(voteData.duration);
-      console.log('Sending start-vote request:', { agendaItemId: activeVote.id, question: voteData.question, duration, procedureId: voteData.procedureId });
+      console.log('Sending start-vote request:', { agendaItemId: activeVote.id, question: finalQuestion, duration, procedureId: voteData.procedureId, voteType: voteData.voteType });
       await axios.post('http://217.114.10.226:5000/api/start-vote', {
         agendaItemId: activeVote.id,
-        question: voteData.question,
+        question: finalQuestion,
         duration: duration,
         procedureId: voteData.procedureId,
+        voteType: voteData.voteType,
       });
       setTimeLeft(duration);
       socket.emit('new-vote-result', {
         agendaItemId: activeVote.id,
-        question: voteData.question,
+        question: finalQuestion,
         duration: duration,
         createdAt: new Date().toISOString(),
       });
@@ -350,7 +369,7 @@ function MeetingControl() {
                     votesAgainst: voteResults.votesAgainst,
                     votesAbstain: voteResults.votesAbstain,
                     votesAbsent: voteResults.votesAbsent,
-                    decision: voteResults.decision // Добавляем поле decision
+                    decision: voteResults.decision
                   }
                 ],
               }
@@ -519,11 +538,27 @@ function MeetingControl() {
           <div className="modal-content">
             <h3>Запуск голосования</h3>
             <div className="form-group">
+              <label>Шаблон голосования</label>
+              <select
+                name="templateId"
+                value={voteData.templateId}
+                onChange={handleVoteInputChange}
+              >
+                <option value="">Свой текст</option>
+                {voteTemplates.map(template => (
+                  <option key={template.id} value={template.id}>
+                    {template.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
               <label>Вопрос голосования *</label>
               <input
                 name="question"
                 value={voteData.question}
                 onChange={handleVoteInputChange}
+                disabled={voteData.templateId !== ''}
                 required
               />
             </div>
@@ -550,6 +585,17 @@ function MeetingControl() {
                     {procedure.name}
                   </option>
                 ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label>Тип голосования</label>
+              <select
+                name="voteType"
+                value={voteData.voteType}
+                onChange={handleVoteInputChange}
+              >
+                <option value="OPEN">Открытое</option>
+                <option value="CLOSED">Закрытое</option>
               </select>
             </div>
             <button onClick={handleVoteModalApply}>Запуск</button>

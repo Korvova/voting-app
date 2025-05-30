@@ -126,11 +126,7 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-
-
-
-
-// API для выхода из аторизации 
+// API для выхода из авторизации 
 app.post('/api/logout', async (req, res) => {
   const { email } = req.body;
   try {
@@ -148,18 +144,6 @@ app.post('/api/logout', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-
-
-
-
-
-
-
-
-
-
-
 
 // API для управления пользователями
 app.get('/api/users', async (req, res) => {
@@ -703,14 +687,7 @@ app.get('/api/meetings/:id/agenda-items', async (req, res) => {
   }
 });
 
-
-
-
-
-
-
-
-// API для получения списка процедур подсчета голосов........................................................
+// API для получения списка процедур подсчета голосов
 app.get('/api/vote-procedures', async (req, res) => {
   try {
     const procedures = await prisma.voteProcedure.findMany();
@@ -775,21 +752,6 @@ app.delete('/api/vote-procedures/:id', async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 app.post('/api/meetings/:id/agenda-items', async (req, res) => {
   const { id } = req.params;
@@ -869,11 +831,61 @@ app.delete('/api/meetings/:id/agenda-items/:itemId', async (req, res) => {
   }
 });
 
+// API для работы с шаблонами голосования
+app.get('/api/vote-templates', async (req, res) => {
+  try {
+    const templates = await prisma.voteTemplate.findMany();
+    res.json(templates);
+  } catch (error) {
+    console.error('Error fetching vote templates:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
+app.post('/api/vote-templates', async (req, res) => {
+  const { title } = req.body;
+  try {
+    if (!title) {
+      return res.status(400).json({ error: 'Title is required' });
+    }
+    const template = await prisma.voteTemplate.create({
+      data: { title },
+    });
+    res.json(template);
+  } catch (error) {
+    console.error('Error creating vote template:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
 
+app.put('/api/vote-templates/:id', async (req, res) => {
+  const { id } = req.params;
+  const { title } = req.body;
+  try {
+    const template = await prisma.voteTemplate.update({
+      where: { id: parseInt(id) },
+      data: { title },
+    });
+    res.json(template);
+  } catch (error) {
+    console.error('Error updating vote template:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
 
+app.delete('/api/vote-templates/:id', async (req, res) => {
+  const { id } = req.params;
+  try {
+    await prisma.voteTemplate.delete({
+      where: { id: parseInt(id) },
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting vote template:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
 
-//........................
 // Функция для вычисления decision
 const calculateDecision = async (voteResultId) => {
   try {
@@ -1134,13 +1146,17 @@ const calculateDecision = async (voteResultId) => {
 
 // Обновлённый маршрут /api/start-vote
 app.post('/api/start-vote', async (req, res) => {
-  const { agendaItemId, question, duration, procedureId } = req.body;
+  const { agendaItemId, question, duration, procedureId, voteType } = req.body;
   try {
-    console.log('Received start-vote request data:', { agendaItemId, question, duration, procedureId });
+    console.log('Received start-vote request data:', { agendaItemId, question, duration, procedureId, voteType });
 
     if (!agendaItemId || !question || !duration || isNaN(duration) || duration <= 0) {
       throw new Error('Invalid request data: agendaItemId, question, and duration (positive number) are required');
     }
+
+    // Проверяем корректность voteType
+    const validVoteTypes = ['OPEN', 'CLOSED'];
+    const finalVoteType = voteType && validVoteTypes.includes(voteType) ? voteType : 'OPEN';
 
     // Устанавливаем procedureId по умолчанию, если он не передан
     const finalProcedureId = procedureId ? parseInt(procedureId) : 10;
@@ -1188,6 +1204,7 @@ app.post('/api/start-vote', async (req, res) => {
         duration: duration,
         voteStatus: 'PENDING',
         procedureId: finalProcedureId,
+        voteType: finalVoteType,
       },
     });
 
@@ -1236,7 +1253,7 @@ app.post('/api/start-vote', async (req, res) => {
           data: {
             voteStatus: 'ENDED',
             votesAbsent: notVotedCount,
-            decision: decision, // Сохраняем decision
+            decision: decision,
           },
         });
 
@@ -1260,13 +1277,6 @@ app.post('/api/start-vote', async (req, res) => {
   }
 });
 
-
-
-
-
-
-
-
 app.get('/api/vote-procedures/:id', async (req, res) => {
   const { id } = req.params;
   try {
@@ -1282,10 +1292,6 @@ app.get('/api/vote-procedures/:id', async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
-
-
-
-
 
 // Подсчет голосов ..................................................................
 app.post('/api/calculate-decision', async (req, res) => {
@@ -1544,16 +1550,12 @@ app.post('/api/calculate-decision', async (req, res) => {
     const decision = finalConditionMet ? resultIfTrue : (resultIfTrue === "Принято" ? "Не принято" : "Принято");
     console.log('Computed decision:', decision);
 
-    // Возвращаем результат
-    res.json({ decision });
+    return decision;
   } catch (error) {
     console.error('Error calculating decision:', error.message);
-    res.status(400).json({ error: error.message });
+    throw error;
   }
 });
-
-
-
 
 app.post('/api/vote-results/:id/apply', async (req, res) => {
   const { id } = req.params;
