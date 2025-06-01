@@ -5,6 +5,8 @@ const { Server } = require('socket.io');
 const { Client } = require('pg');
 const { PrismaClient } = require('@prisma/client');
 
+const path = require('path'); 
+
 const app = express();
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
@@ -19,6 +21,7 @@ const io = new Server(httpServer, {
 const prisma = new PrismaClient();
 const port = 5000;
 
+
 // Явная настройка CORS для всех запросов
 app.use(cors({
   origin: 'http://217.114.10.226',
@@ -30,20 +33,7 @@ app.use(cors({
 }));
 app.use(express.json());
 
-// Перенесенный маршрут из users.js
-app.post('/api/users/:id/disconnect', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const user = await prisma.user.update({
-      where: { id: parseInt(id) },
-      data: { isOnline: false },
-    });
-    res.json({ success: true, user });
-  } catch (error) {
-    console.error('Error disconnecting user:', error);
-    res.status(400).json({ error: error.message });
-  }
-});
+
 
 // Подписка на уведомления PostgreSQL
 const pgClient = new Client({
@@ -97,434 +87,37 @@ pgClient.on('notification', (msg) => {
   }
 });
 
+
+
 // Тестовый маршрут для проверки API
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// API для авторизации
-app.post('/api/login', async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || user.password !== password) {
-      return res.status(401).json({ success: false, error: 'Invalid email or password' });
-    }
-    // Проверяем, авторизован ли пользователь (не админ)
-    if (!user.isAdmin && user.isOnline) {
-      return res.status(403).json({ success: false, error: 'Пользователь авторизован на другом устройстве' });
-    }
-    // Обновляем статус пользователя на онлайн (триггер автоматически отправит уведомление)
-    const updatedUser = await prisma.user.update({
-      where: { email },
-      data: { isOnline: true },
-    });
-    // Возвращаем id пользователя в ответе
-    res.json({ success: true, user: { id: updatedUser.id, email: user.email, isAdmin: user.isAdmin } });
-  } catch (error) {
-    res.status(500).json({ success: false, error: error.message });
-  }
-});
 
-// API для выхода из авторизации 
-app.post('/api/logout', async (req, res) => {
-  const { email } = req.body;
-  try {
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    // Обновляем статус пользователя на оффлайн (триггер автоматически отправит уведомление)
-    await prisma.user.update({
-      where: { email },
-      data: { isOnline: false },
-    });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
-// API для управления пользователями
-app.get('/api/users', async (req, res) => {
-  try {
-    const users = await prisma.user.findMany({
-      include: { division: true },
-    });
-    res.json(users.map(user => ({
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      phone: user.phone,
-      division: user.division ? user.division.name : 'Нет',
-      isOnline: user.isOnline
-    })));
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
-app.post('/api/users', async (req, res) => {
-  const { name, email, phone, divisionId, password } = req.body;
-  try {
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        phone,
-        password,
-        divisionId: divisionId ? parseInt(divisionId) : null,
-      },
-    });
-    res.json(user);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
+// Подключенный файл ............................................................................................................................
+app.use('/api/test',require(path.join(__dirname, 'root/test.cjs')));
 
-app.put('/api/users/:id', async (req, res) => {
-  const { id } = req.params;
-  const { name, email, phone, divisionId, password } = req.body;
-  try {
-    const user = await prisma.user.update({
-      where: { id: parseInt(id) },
-      data: {
-        name,
-        email,
-        phone,
-        divisionId: divisionId ? parseInt(divisionId) : null,
-        password: password || undefined,
-      },
-    });
-    res.json(user);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
+// API для авторизации  /api/login  и API для выхода из авторизации
+app.use('/api', require('./root/auth.cjs'));
 
-app.delete('/api/users/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    await prisma.user.delete({ where: { id: parseInt(id) } });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
+// Маршруты будут доступны управлением пользователями по GET /api/users, POST /api/users, PUT /api/users/:id, DELETE /api/users/:id, POST /api/users/:id/disconnect.
+app.use('/api/users', require('./root/users.cjs'));
 
-// API для управления подразделениями
-app.get('/api/divisions', async (req, res) => {
-  try {
-    const divisions = await prisma.division.findMany({
-      include: { users: true },
-    });
-    res.json(divisions.map(division => ({
-      id: division.id,
-      name: division.name,
-      userCount: division.users.length,
-    })));
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// API для управления подразделениями  маршруты  доступны по URL: GET /api/divisions, POST /api/divisions, PUT /api/divisions/:id, DELETE /api/divisions/:id.
+app.use('/api/divisions', require('./root/divisions.cjs')); 
 
-app.post('/api/divisions', async (req, res) => {
-  const { name } = req.body;
-  try {
-    const division = await prisma.division.create({
-      data: { name },
-    });
-    res.json(division);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
+//API для управления заседаниями GET /api/meetings, GET /api/meetings/archived, GET /api/meetings/active-for-user, GET /api/meetings/:id, POST /api/meetings, PUT /api/meetings/:id, DELETE /api/meetings/:id, POST /api/meetings/:id/archive
+app.use('/api/meetings', require('./root/meetings.cjs'));
 
-app.put('/api/divisions/:id', async (req, res) => {
-  const { id } = req.params;
-  const { name } = req.body;
-  try {
-    const division = await prisma.division.update({
-      where: { id: parseInt(id) },
-      data: { name },
-    });
-    res.json(division);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
 
-app.delete('/api/divisions/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    await prisma.division.delete({ where: { id: parseInt(id) } });
-    res.json({ success: true });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
 
-// API для управления заседаниями (исключая архивные)
-app.get('/api/meetings', async (req, res) => {
-  try {
-    const meetings = await prisma.meeting.findMany({
-      where: { isArchived: false },
-      include: { divisions: true },
-    });
-    console.log('Fetched meetings on frontend:', meetings);
-    res.json(meetings.map(meeting => ({
-      id: meeting.id,
-      name: meeting.name,
-      startTime: meeting.startTime.toISOString(),
-      endTime: meeting.endTime.toISOString(),
-      status: meeting.status,
-      divisions: meeting.divisions.map(d => d.name).join(', ') || 'Нет',
-      isArchived: meeting.isArchived,
-    })));
-  } catch (error) {
-    console.error('Error fetching meetings:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
 
-// API для управления заседаниями (только архивные)
-app.get('/api/meetings/archived', async (req, res) => {
-  try {
-    const meetings = await prisma.meeting.findMany({
-      where: { isArchived: true },
-      include: { divisions: true },
-    });
-    console.log('Fetched archived meetings:', meetings);
-    res.json(meetings.map(meeting => ({
-      id: meeting.id,
-      name: meeting.name,
-      startTime: meeting.startTime.toISOString(),
-      endTime: meeting.endTime.toISOString(),
-      status: meeting.status,
-      divisions: meeting.divisions.map(d => d.name).join(', ') || 'Нет',
-      isArchived: meeting.isArchived,
-    })));
-  } catch (error) {
-    console.error('Error fetching archived meetings:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
 
-// API для получения активных заседаний для пользователя
-app.get('/api/meetings/active-for-user', async (req, res) => {
-  const { email } = req.query;
-  try {
-    const user = await prisma.user.findUnique({
-      where: { email },
-      include: { division: true },
-    });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
 
-    const meetings = await prisma.meeting.findMany({
-      where: {
-        isArchived: false,
-      },
-      include: {
-        divisions: {
-          include: { users: true },
-        },
-      },
-    });
 
-    const userMeetings = meetings.filter(meeting =>
-      meeting.divisions.some(division => division.id === user.divisionId)
-    );
-
-    const meetingsWithAgenda = await Promise.all(
-      userMeetings.map(async (meeting) => {
-        const agendaItems = await prisma.agendaItem.findMany({
-          where: { meetingId: meeting.id },
-          include: { speaker: true },
-          orderBy: { number: 'asc' },
-        });
-        return {
-          ...meeting,
-          agendaItems: agendaItems.map(item => ({
-            id: item.id,
-            number: item.number,
-            title: item.title,
-            speaker: item.speaker ? item.speaker.name : 'Нет',
-            link: item.link,
-            voting: item.voting,
-            completed: item.completed,
-            activeIssue: item.activeIssue,
-          })),
-          divisions: meeting.divisions.map(division => ({
-            id: division.id,
-            name: division.name,
-            users: division.users.map(user => ({
-              id: user.id,
-              name: user.name,
-              email: user.email,
-            })),
-          })),
-        };
-      })
-    );
-
-    console.log('Agenda items response:', JSON.stringify(meetingsWithAgenda, null, 2));
-    res.json(meetingsWithAgenda);
-  } catch (error) {
-    console.error('Error fetching active meetings for user:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get('/api/meetings/:id', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const meeting = await prisma.meeting.findUnique({
-      where: { id: parseInt(id) },
-      include: { divisions: true },
-    });
-    if (!meeting) {
-      return res.status(404).json({ error: 'Meeting not found' });
-    }
-    res.json({
-      id: meeting.id,
-      name: meeting.name,
-      startTime: meeting.startTime.toISOString(),
-      endTime: meeting.endTime.toISOString(),
-      status: meeting.status,
-      divisions: meeting.divisions.map(d => d.name).join(', ') || 'Нет',
-      isArchived: meeting.isArchived,
-      participantsOnline: 30,
-      participantsTotal: 36,
-    });
-  } catch (error) {
-    console.error('Error fetching meeting:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post('/api/meetings', async (req, res) => {
-  const { name, startTime, endTime, divisionIds, agendaItems } = req.body;
-  console.log('Received meeting data:', req.body);
-  try {
-    const meeting = await prisma.meeting.create({
-      data: {
-        name,
-        startTime: new Date(startTime),
-        endTime: new Date(endTime),
-        status: 'WAITING',
-        isArchived: false,
-        divisions: {
-          connect: divisionIds && Array.isArray(divisionIds) ? divisionIds.map(id => ({ id: parseInt(id) })) : [],
-        },
-        agendaItems: {
-          create: agendaItems && Array.isArray(agendaItems) ? agendaItems.map(item => ({
-            number: item.number,
-            title: item.title,
-            speakerId: item.speakerId ? parseInt(item.speakerId) : null,
-            link: item.link || null,
-            voting: false,
-            completed: false,
-          })) : [],
-        },
-      },
-    });
-    res.json(meeting);
-  } catch (error) {
-    console.error('Error creating meeting:', error);
-    res.status(400).json({ error: error.message });
-  }
-});
-
-app.put('/api/meetings/:id', async (req, res) => {
-  const { id } = req.params;
-  const { name, startTime, endTime, divisionIds, agendaItems } = req.body;
-  console.log('Received update meeting data:', req.body);
-  try {
-    await prisma.agendaItem.deleteMany({ where: { meetingId: parseInt(id) } });
-    const meeting = await prisma.meeting.update({
-      where: { id: parseInt(id) },
-      data: {
-        name,
-        startTime: new Date(startTime),
-        endTime: new Date(endTime),
-        isArchived: false,
-        divisions: {
-          set: [],
-          connect: divisionIds && Array.isArray(divisionIds) ? divisionIds.map(id => ({ id: parseInt(id) })) : [],
-        },
-        agendaItems: {
-          create: agendaItems && Array.isArray(agendaItems) ? agendaItems.map(item => ({
-            number: item.number,
-            title: item.title,
-            speakerId: item.speakerId ? parseInt(item.speakerId) : null,
-            link: item.link || null,
-            voting: false,
-            completed: false,
-          })) : [],
-        },
-      },
-    });
-    res.json(meeting);
-  } catch (error) {
-    console.error('Error updating meeting:', error);
-    res.status(400).json({ error: error.message });
-  }
-});
-
-app.delete('/api/meetings/:id', async (req, res) => {
-  const { id } = req.params;
-  console.log(`Deleting meeting ${id}`);
-  try {
-    const meeting = await prisma.meeting.findUnique({ 
-      where: { id: parseInt(id) },
-      include: { agendaItems: true }
-    });
-    if (!meeting) {
-      return res.status(404).json({ error: 'Meeting not found' });
-    }
-
-    await prisma.$transaction(async (prisma) => {
-      const agendaItems = meeting.agendaItems;
-      for (const agendaItem of agendaItems) {
-        await prisma.vote.deleteMany({
-          where: { agendaItemId: agendaItem.id },
-        });
-        await prisma.voteResult.deleteMany({
-          where: { agendaItemId: agendaItem.id },
-        });
-      }
-      await prisma.agendaItem.deleteMany({
-        where: { meetingId: parseInt(id) },
-      });
-      await prisma.voteResult.deleteMany({
-        where: { meetingId: parseInt(id) },
-      });
-      await prisma.meeting.delete({
-        where: { id: parseInt(id) },
-      });
-    });
-
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Error deleting meeting:', error);
-    res.status(400).json({ error: error.message });
-  }
-});
-
-app.post('/api/meetings/:id/archive', async (req, res) => {
-  const { id } = req.params;
-  try {
-    const meeting = await prisma.meeting.update({
-      where: { id: parseInt(id) },
-      data: { isArchived: true },
-    });
-    res.json(meeting);
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
-});
 
 // API для записи голоса пользователя
 app.post('/api/vote', async (req, res) => {
