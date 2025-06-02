@@ -113,8 +113,8 @@ app.use('/api/divisions', require('./root/divisions.cjs'));
 app.use('/api/meetings', require('./root/meetings.cjs'));
 
 
-
-
+//API для управления связи ID устройсва с юзером 
+app.use('/api/device-links', require('./root/device-links.cjs'));
 
 
 

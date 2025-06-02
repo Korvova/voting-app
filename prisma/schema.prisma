@@ -27,6 +27,7 @@ model User {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   isOnline    Boolean   @default(false) // Новое поле для статуса онлайн/оффлайн
+  deviceLink  DeviceLink?  @relation // Добавляем связь с устройством
 }
 
 model Division {
@@ -121,6 +122,18 @@ model VoteProcedure {
 model VoteTemplate {
   id        Int      @id @default(autoincrement())
   title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+
+
+
+model DeviceLink {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique // Один пользователь — один ID устройства (один-к-одному)
+  user      User     @relation(fields: [userId], references: [id])
+  deviceId  String   @unique // Уникальность ID устройства
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
