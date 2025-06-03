@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import PollModal from '../components/PollModal'; // Импорт PollModal
-import '../App.css'; // Импорт стилей
-import io from 'socket.io-client'; // Импорт Socket.IO
-import DisconnectModal from '../components/DisconnectModal'; // Новый импорт
+import PollModal from '../components/PollModal';
+import '../App.css';
+import io from 'socket.io-client';
+import DisconnectModal from '../components/DisconnectModal';
+import './UsersPage.css';
 
 function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -11,15 +12,16 @@ function UsersPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showDisconnectModal, setShowDisconnectModal] = useState(false); // Новое состояние для модального окна отключения
-  const [userToDisconnect, setUserToDisconnect] = useState(null); // Пользователь для отключения
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+  const [userToDisconnect, setUserToDisconnect] = useState(null);
   const [userToDelete, setUserToDelete] = useState(null);
   const [editUser, setEditUser] = useState(null);
   const [newUser, setNewUser] = useState({ name: '', email: '', phone: '', divisionId: '', password: '' });
-  const socketRef = useRef(null); // Ref для Socket.IO
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef(null);
+  const socketRef = useRef(null);
 
   useEffect(() => {
-    // Инициализация Socket.IO
     const protocol = window.location.protocol === 'https:' ? 'https' : 'http';
     socketRef.current = io(`${protocol}://217.114.10.226:5000`, {
       transports: ['websocket', 'polling'],
@@ -42,26 +44,6 @@ function UsersPage() {
       );
     });
 
-    // Получение списка пользователей через API
-    const fetchUsers = async () => {
-      try {
-        const response = await axios.get('http://217.114.10.226:5000/api/users');
-        setUsers(response.data);
-      } catch (error) {
-        console.error('Error fetching users:', error.message);
-      }
-    };
-
-    // Получение списка подразделений через API
-    const fetchDivisions = async () => {
-      try {
-        const response = await axios.get('http://217.114.10.226:5000/api/divisions');
-        setDivisions(response.data);
-      } catch (error) {
-        console.error('Error fetching divisions:', error.message);
-      }
-    };
-
     fetchUsers();
     fetchDivisions();
 
@@ -70,6 +52,87 @@ function UsersPage() {
       socketRef.current.disconnect();
     };
   }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const response = await axios.get('http://217.114.10.226:5000/api/users');
+      setUsers(response.data);
+    } catch (error) {
+      console.error('Error fetching users:', error.message);
+    }
+  };
+
+  const fetchDivisions = async () => {
+    try {
+      const response = await axios.get('http://217.114.10.226:5000/api/divisions');
+      setDivisions(response.data);
+    } catch (error) {
+      console.error('Error fetching divisions:', error.message);
+    }
+  };
+
+  const handleExportToExcel = async () => {
+    try {
+      const response = await axios.get('http://217.114.10.226:5000/api/users/export', {
+        responseType: 'blob',
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'users.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting users:', error.message);
+      alert('Ошибка при экспорте пользователей');
+    }
+  };
+
+  const handleImportFromExcel = () => {
+    fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.name.endsWith('.xlsx')) {
+      alert('Выберите файл формата .xlsx');
+      fileInputRef.current.value = '';
+      return;
+    }
+
+    setIsImporting(true);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await axios.post('http://217.114.10.226:5000/api/users/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      const { added, updated, errors } = response.data;
+      let message = `Импорт завершен: добавлено ${added}, обновлено ${updated} пользователей.`;
+      if (errors.length > 0) {
+        message += `\nОшибки:\n${errors.join('\n')}`;
+      }
+      alert(message);
+
+      fetchUsers();
+    } catch (error) {
+      console.error('Error importing users:', error.message);
+      alert('Ошибка при импорте пользователей');
+    } finally {
+      setIsImporting(false);
+      fileInputRef.current.value = '';
+    }
+  };
 
   const handleAddUser = () => {
     setShowAddModal(true);
@@ -171,9 +234,26 @@ function UsersPage() {
 
   return (
     <div className="users-page">
-      <button className="add-button" onClick={handleAddUser}>
-        + Добавить пользователя
-      </button>
+      <div className="excel-buttons">
+        <button className="small-button" onClick={handleExportToExcel}>
+          📤Экспорт в Excel
+        </button>
+        <button className="small-button" onClick={handleImportFromExcel} disabled={isImporting}>
+          {isImporting ? 'Идёт импорт...' : '📥Импорт из Excel'}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+      </div>
+      <div className="button-group">
+        <button className="add-button" onClick={handleAddUser}>
+          + Добавить пользователя
+        </button>
+      </div>
       <table className="users-table">
         <thead>
           <tr>
@@ -181,7 +261,7 @@ function UsersPage() {
             <th>Email</th>
             <th>Моб. Тел</th>
             <th>Подразделение</th>
-            <th>Статус</th> {/* Новая колонка */}
+            <th>Статус</th>
             <th></th>
           </tr>
         </thead>
@@ -354,14 +434,14 @@ function UsersPage() {
         </div>
       )}
 
-{showDisconnectModal && (
-  <DisconnectModal
-    isOpen={showDisconnectModal}
-    userName={userToDisconnect?.name}
-    onConfirm={confirmDisconnect}
-    onCancel={cancelDisconnect}
-  />
-)}
+      {showDisconnectModal && (
+        <DisconnectModal
+          isOpen={showDisconnectModal}
+          userName={userToDisconnect?.name}
+          onConfirm={confirmDisconnect}
+          onCancel={cancelDisconnect}
+        />
+      )}
     </div>
   );
 }

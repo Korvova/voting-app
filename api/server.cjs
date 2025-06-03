@@ -118,6 +118,12 @@ app.use('/api/device-links', require('./root/device-links.cjs'));
 
 
 
+//API для документации
+app.use('/api-docs', require('./root/swagger.cjs'));
+
+//API работы с эксель
+app.use('/api/users', require('./root/excel.cjs'));
+
 
 // API для записи голоса пользователя
 app.post('/api/vote', async (req, res) => {
@@ -1274,6 +1280,18 @@ io.on('connection', (socket) => {
     console.log('A client disconnected:', socket.id, 'Reason:', reason);
   });
 });
+
+
+
+
+const fs = require('fs');
+const docPath = path.join(__dirname, '../doc');
+if (fs.existsSync(docPath)) {
+  app.use('/docs', express.static(docPath));
+} else {
+  console.error(`Directory ${docPath} does not exist`);
+}
+
 
 httpServer.listen(port, () => {
   console.log(`Server running on http://localhost:${port}`);

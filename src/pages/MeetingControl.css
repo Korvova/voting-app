@@ -1,0 +1,20 @@
+.broadcast-container {
+  position: absolute;
+  top: 200px;
+  right: 20px;
+}
+
+.broadcast-link {
+  font-size: 16px;
+  color: #1a73e8;
+  text-decoration: none;
+  padding: 5px 10px;
+  border: 1px solid #1a73e8;
+  border-radius: 4px;
+  transition: background-color 0.3s, color 0.3s;
+}
+
+.broadcast-link:hover {
+  background-color: #1a73e8;
+  color: white;
+}

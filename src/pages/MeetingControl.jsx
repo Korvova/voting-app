@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import io from 'socket.io-client';
 import axios from 'axios';
+import './MeetingControl.css';
 
 function MeetingControl() {
   const { id } = useParams();
@@ -15,7 +16,7 @@ function MeetingControl() {
   const [voteResultsError, setVoteResultsError] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
   const [procedures, setProcedures] = useState([]);
-  const [voteTemplates, setVoteTemplates] = useState([]); // Состояние для шаблонов
+  const [voteTemplates, setVoteTemplates] = useState([]);
   const socket = io('http://217.114.10.226:5000');
 
   const fetchMeeting = async () => {
@@ -420,6 +421,15 @@ function MeetingControl() {
 
   return (
     <div className="meeting-control">
+      <div className="broadcast-container">
+        <Link
+          to={`/broadcast/${id}`}
+          target="_blank"
+          className="broadcast-link"
+        >
+          📺 Экран трансляции
+        </Link>
+      </div>
       <h2>{meeting.name}</h2>
       <div className="meeting-actions">
         <button

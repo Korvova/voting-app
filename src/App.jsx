@@ -3,6 +3,7 @@ import LoginPage from './pages/LoginPage';
 import AdminPanel from './pages/AdminPanel';
 import UserPage from './pages/UserPage';
 import ProtocolPage from './pages/ProtocolPage';
+import BroadcastPage from './pages/BroadcastPage'; // Импортируем новую страницу
 import './App.css';
 import { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -13,7 +14,7 @@ function App() {
     const savedUser = localStorage.getItem('user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
-  const [loginError, setLoginError] = useState(null); // Добавляем состояние для ошибки
+  const [loginError, setLoginError] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -54,12 +55,12 @@ function App() {
 
   const handleLogin = async (userData) => {
     try {
-      setLoginError(null); // Сбрасываем ошибку перед попыткой
+      setLoginError(null);
       const response = await axios.post('http://217.114.10.226:5000/api/login', userData);
       if (response.data.success) {
         setUser(response.data.user);
       } else {
-        setLoginError(response.data.error); // Устанавливаем ошибку от сервера
+        setLoginError(response.data.error);
         console.log('Login failed:', response.data.error);
       }
     } catch (error) {
@@ -118,6 +119,7 @@ function App() {
       >
         <Route path="protocol/:id" element={<ProtocolPage user={user} onLogout={handleLogout} />} />
       </Route>
+      <Route path="/broadcast/:meetingId" element={<BroadcastPage />} />
     </Routes>
   );
 }
