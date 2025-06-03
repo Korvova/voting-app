@@ -105,7 +105,7 @@ app.get('/api/health', (req, res) => {
 // Routes
 app.use('/api/test', require(path.join(__dirname, 'root/test.cjs')));
 app.use('/api', require('./root/auth.cjs'));
-app.use('/api/users', require('./root/users.cjs'));
+app.use('/api/users', require('./root/users.cjs')(prisma));
 app.use('/api/divisions', require('./root/divisions.cjs'));
 app.use('/api/meetings', require('./root/meetings.cjs')(prisma, pgClient));
 app.use('/api/device-links', require('./root/device-links.cjs'));

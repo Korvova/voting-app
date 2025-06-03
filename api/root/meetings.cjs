@@ -196,41 +196,93 @@ module.exports = (prisma, pgClient) => {
    * @route PUT /api/meetings/:id
    * @desc Update a meeting
    */
-  router.put('/:id', async (req, res) => {
-    const { id } = req.params;
-    const { name, startTime, endTime, divisionIds, agendaItems } = req.body;
-    console.log('Received update meeting data:', req.body);
-    try {
-      await prisma.agendaItem.deleteMany({ where: { meetingId: parseInt(id) } });
-      const meeting = await prisma.meeting.update({
+
+router.put('/:id', async (req, res) => {
+  const { id } = req.params;
+  const { name, startTime, endTime, divisionIds, agendaItems, status } = req.body;
+  console.log('Received update meeting data:', req.body);
+  try {
+    // Валидация входных данных
+    if (!name || !startTime || !endTime) {
+      return res.status(400).json({ error: 'Поля name, startTime и endTime обязательны' });
+    }
+    const startDate = new Date(startTime);
+    const endDate = new Date(endTime);
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      return res.status(400).json({ error: 'Некорректный формат дат startTime или endTime' });
+    }
+    if (divisionIds && !Array.isArray(divisionIds)) {
+      return res.status(400).json({ error: 'divisionIds должен быть массивом' });
+    }
+    if (agendaItems && !Array.isArray(agendaItems)) {
+      return res.status(400).json({ error: 'agendaItems должен быть массивом' });
+    }
+    if (status && !['WAITING', 'IN_PROGRESS', 'COMPLETED'].includes(status)) {
+      return res.status(400).json({ error: 'Некорректный статус заседания. Допустимые значения: WAITING, IN_PROGRESS, COMPLETED' });
+    }
+
+    // Проверка существования заседания
+    const meeting = await prisma.meeting.findUnique({ 
+      where: { id: parseInt(id) },
+      include: { agendaItems: true }
+    });
+    if (!meeting) {
+      return res.status(404).json({ error: 'Заседание не найдено' });
+    }
+
+    // Удаление связанных данных и обновление в транзакции
+    const updatedMeeting = await prisma.$transaction(async (tx) => {
+      // Удаляем VoteResult и Vote для каждого agendaItem
+      for (const agendaItem of meeting.agendaItems) {
+        await tx.vote.deleteMany({
+          where: { agendaItemId: agendaItem.id },
+        });
+        await tx.voteResult.deleteMany({
+          where: { agendaItemId: agendaItem.id },
+        });
+      }
+      // Удаляем agendaItems
+      await tx.agendaItem.deleteMany({
+        where: { meetingId: parseInt(id) },
+      });
+      // Обновляем заседание
+      return await tx.meeting.update({
         where: { id: parseInt(id) },
         data: {
           name,
-          startTime: new Date(startTime),
-          endTime: new Date(endTime),
+          startTime: startDate,
+          endTime: endDate,
+          status: status || meeting.status,
           isArchived: false,
           divisions: {
             set: [],
-            connect: divisionIds && Array.isArray(divisionIds) ? divisionIds.map(id => ({ id: parseInt(id) })) : [],
+            connect: divisionIds ? divisionIds.map(id => ({ id: parseInt(id) })) : [],
           },
           agendaItems: {
-            create: agendaItems && Array.isArray(agendaItems) ? agendaItems.map(item => ({
+            create: agendaItems ? agendaItems.map(item => ({
               number: item.number,
               title: item.title,
               speakerId: item.speakerId ? parseInt(item.speakerId) : null,
               link: item.link || null,
               voting: false,
               completed: false,
+              activeIssue: false,
             })) : [],
           },
         },
+        include: { divisions: true, agendaItems: true },
       });
-      res.json(meeting);
-    } catch (error) {
-      console.error('Error updating meeting:', error);
-      res.status(400).json({ error: error.message });
-    }
-  });
+    });
+
+    res.json(updatedMeeting);
+  } catch (error) {
+    console.error('Ошибка при обновлении заседания:', error);
+    res.status(400).json({ error: error.message });
+  }
+});
+
+
+
 
   /**
    * @route DELETE /api/meetings/:id

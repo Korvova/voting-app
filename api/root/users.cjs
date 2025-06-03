@@ -1,59 +1,65 @@
 const express = require('express');
 const router = express.Router();
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
 
 /**
- * @api {post} /api/users/:id/disconnect Disconnect a user
- * @apiName DisconnectUser
- * @apiGroup Users
- * @apiDescription Sets the user's online status to false
- * @apiParam {Number} id User ID (path parameter)
- * @apiSuccess {Boolean} success Operation status
- * @apiSuccess {Object} user Updated user object
- * @apiSuccess {Number} user.id User ID
- * @apiSuccess {Boolean} user.isOnline User online status
- * @apiError (400) BadRequest Invalid user ID or other error
- * @apiErrorExample {json} Error-Response:
+ * @api {post} /api/users/:id/disconnect Отключение пользователя
+ * @apiName ОтключениеПользователя
+ * @apiGroup Пользователи
+ * @apiDescription Устанавливает статус пользователя `isOnline` в значение `false`, что означает, что пользователь больше не активен в системе (например, вышел из приложения). Этот маршрут используется для управления состоянием подключения пользователя.
+ * @apiParam {Number} id Идентификатор пользователя (параметр пути). Должен быть целым числом, соответствующим записи в таблице `User` базы данных.
+ * @apiSuccess {Boolean} success Статус операции. Возвращает `true`, если отключение прошло успешно.
+ * @apiSuccess {Object} user Обновлённый объект пользователя.
+ * @apiSuccess {Number} user.id Идентификатор пользователя.
+ * @apiSuccess {String} user.name Имя пользователя.
+ * @apiSuccess {String} user.email Электронная почта пользователя.
+ * @apiSuccess {String} [user.phone] Номер телефона пользователя (может быть `null`).
+ * @apiSuccess {Boolean} user.isOnline Статус активности пользователя (`false` после отключения).
+ * @apiSuccess {Number} [user.divisionId] Идентификатор подразделения, к которому привязан пользователь (может быть `null`).
+ * @apiError (400) BadRequest Ошибка, если пользователь с указанным `id` не найден или передан некорректный `id`.
+ * @apiErrorExample {json} Пример ответа при ошибке:
  *     {
- *       "error": "User not found"
+ *         "error": "Пользователь не найден"
  *     }
+ * @apiExample {curl} Пример использования:
+ *     curl -X POST http://217.114.10.226:5000/api/users/26/disconnect
  */
 router.post('/:id/disconnect', async (req, res) => {
   const { id } = req.params;
   try {
-    const user = await prisma.user.update({
+    const user = await req.prisma.user.update({
       where: { id: parseInt(id) },
       data: { isOnline: false },
     });
     res.json({ success: true, user });
   } catch (error) {
-    console.error('Error disconnecting user:', error);
+    console.error('Ошибка при отключении пользователя:', error);
     res.status(400).json({ error: error.message });
   }
 });
 
 /**
- * @api {get} /api/users Get all users
- * @apiName GetUsers
- * @apiGroup Users
- * @apiDescription Retrieves a list of all users with their division information
- * @apiSuccess {Object[]} users List of users
- * @apiSuccess {Number} users.id User ID
- * @apiSuccess {String} users.name User name
- * @apiSuccess {String} users.email User email
- * @apiSuccess {String} users.phone User phone
- * @apiSuccess {String} users.division Division name or 'Нет' if none
- * @apiSuccess {Boolean} users.isOnline User online status
- * @apiError (500) ServerError Database or server error
- * @apiErrorExample {json} Error-Response:
+ * @api {get} /api/users Получение списка всех пользователей
+ * @apiName ПолучениеПользователей
+ * @apiGroup Пользователи
+ * @apiDescription Возвращает список всех пользователей, зарегистрированных в системе, с информацией об их подразделениях. Используется для отображения пользователей в интерфейсе администратора или для анализа данных.
+ * @apiSuccess {Object[]} users Массив объектов пользователей.
+ * @apiSuccess {Number} users.id Идентификатор пользователя.
+ * @apiSuccess {String} users.name Имя пользователя.
+ * @apiSuccess {String} users.email Электронная почта пользователя.
+ * @apiSuccess {String} [users.phone] Номер телефона пользователя (может быть `null`).
+ * @apiSuccess {String} users.division Название подразделения, к которому привязан пользователь, или строка `"Нет"`, если подразделение не указано.
+ * @apiSuccess {Boolean} users.isOnline Статус активности пользователя (`true` — онлайн, `false` — оффлайн).
+ * @apiError (500) ServerError Ошибка сервера или базы данных, например, при сбое подключения к PostgreSQL.
+ * @apiErrorExample {json} Пример ответа при ошибке:
  *     {
- *       "error": "Internal server error"
+ *         "error": "Внутренняя ошибка сервера"
  *     }
+ * @apiExample {curl} Пример использования:
+ *     curl http://217.114.10.226:5000/api/users
  */
 router.get('/', async (req, res) => {
   try {
-    const users = await prisma.user.findMany({
+    const users = await req.prisma.user.findMany({
       include: { division: true },
     });
     res.json(users.map(user => ({
@@ -65,35 +71,39 @@ router.get('/', async (req, res) => {
       isOnline: user.isOnline
     })));
   } catch (error) {
+    console.error('Ошибка при получении списка пользователей:', error);
     res.status(500).json({ error: error.message });
   }
 });
 
 /**
- * @api {post} /api/users Create a new user
- * @apiName CreateUser
- * @apiGroup Users
- * @apiDescription Creates a new user with provided details
- * @apiBody {String} name User name
- * @apiBody {String} email User email
- * @apiBody {String} [phone] User phone (optional)
- * @apiBody {Number} [divisionId] Division ID (optional)
- * @apiBody {String} password User password
- * @apiSuccess {Object} user Created user object
- * @apiSuccess {Number} user.id User ID
- * @apiSuccess {String} user.name User name
- * @apiSuccess {String} user.email User email
- * @apiSuccess {String} user.phone User phone
- * @apiError (400) BadRequest Invalid input data
- * @apiErrorExample {json} Error-Response:
+ * @api {post} /api/users Создание нового пользователя
+ * @apiName СозданиеПользователя
+ * @apiGroup Пользователи
+ * @apiDescription Создаёт нового пользователя в системе с указанными данными. Используется для регистрации новых участников системы, таких как сотрудники или члены организации. Обязательные поля: `name`, `email`, `password`.
+ * @apiBody {String} name Имя пользователя (например, "Иван Иванов").
+ * @apiBody {String} email Уникальный адрес электронной почты пользователя (например, "ivan@example.com").
+ * @apiBody {String} [phone] Номер телефона пользователя (опционально, может быть `null`).
+ * @apiBody {Number} [divisionId] Идентификатор подразделения, к которому привязан пользователь (опционально, целое число или `null`).
+ * @apiBody {String} password Пароль пользователя (хранится в зашифрованном виде в базе данных).
+ * @apiSuccess {Object} user Созданный объект пользователя.
+ * @apiSuccess {Number} user.id Идентификатор пользователя.
+ * @apiSuccess {String} user.name Имя пользователя.
+ * @apiSuccess {String} user.email Электронная почта пользователя.
+ * @apiSuccess {String} [user.phone] Номер телефона пользователя.
+ * @apiSuccess {Number} [user.divisionId] Идентификатор подразделения.
+ * @apiError (400) BadRequest Ошибка, если переданы некорректные данные (например, email уже существует, отсутствует обязательное поле или `divisionId` невалиден).
+ * @apiErrorExample {json} Пример ответа при ошибке:
  *     {
- *       "error": "Email already exists"
+ *         "error": "Электронная почта уже существует"
  *     }
+ * @apiExample {curl} Пример использования:
+ *     curl -X POST -H "Content-Type: application/json" -d '{"name":"Иван Иванов","email":"ivan@example.com","phone":"1234567890","divisionId":1,"password":"secure123"}' http://217.114.10.226:5000/api/users
  */
 router.post('/', async (req, res) => {
   const { name, email, phone, divisionId, password } = req.body;
   try {
-    const user = await prisma.user.create({
+    const user = await req.prisma.user.create({
       data: {
         name,
         email,
@@ -104,37 +114,41 @@ router.post('/', async (req, res) => {
     });
     res.json(user);
   } catch (error) {
+    console.error('Ошибка при создании пользователя:', error);
     res.status(400).json({ error: error.message });
   }
 });
 
 /**
- * @api {put} /api/users/:id Update a user
- * @apiName UpdateUser
- * @apiGroup Users
- * @apiDescription Updates user details
- * @apiParam {Number} id User ID (path parameter)
- * @apiBody {String} [name] User name (optional)
- * @apiBody {String} [email] User email (optional)
- * @apiBody {String} [phone] User phone (optional)
- * @apiBody {Number} [divisionId] Division ID (optional)
- * @apiBody {String} [password] User password (optional)
- * @apiSuccess {Object} user Updated user object
- * @apiSuccess {Number} user.id User ID
- * @apiSuccess {String} user.name User name
- * @apiSuccess {String} user.email User email
- * @apiSuccess {String} user.phone User phone
- * @apiError (400) BadRequest Invalid user ID or input data
- * @apiErrorExample {json} Error-Response:
+ * @api {put} /api/users/:id Обновление данных пользователя
+ * @apiName ОбновлениеПользователя
+ * @apiGroup Пользователи
+ * @apiDescription Обновляет данные существующего пользователя по его идентификатору. Позволяет изменить имя, email, телефон, подразделение или пароль. Все поля опциональны, обновляются только переданные в теле запроса.
+ * @apiParam {Number} id Идентификатор пользователя (параметр пути). Должен быть целым числом, соответствующим записи в таблице `User`.
+ * @apiBody {String} [name] Новое имя пользователя (опционально).
+ * @apiBody {String} [email] Новый адрес электронной почты (опционально, должен быть уникальным).
+ * @apiBody {String} [phone] Новый номер телефона (опционально, может быть `null`).
+ * @apiBody {Number} [divisionId] Новый идентификатор подразделения (опционально, целое число или `null`).
+ * @apiBody {String} [password] Новый пароль пользователя (опционально).
+ * @apiSuccess {Object} user Обновлённый объект пользователя.
+ * @apiSuccess {Number} user.id Идентификатор пользователя.
+ * @apiSuccess {String} user.name Имя пользователя.
+ * @apiSuccess {String} user.email Электронная почта пользователя.
+ * @apiSuccess {String} [user.phone] Номер телефона пользователя.
+ * @apiSuccess {Number} [user.divisionId] Идентификатор подразделения.
+ * @apiError (400) BadRequest Ошибка, если пользователь с указанным `id` не найден, переданы некорректные данные (например, email уже используется) или `divisionId` невалиден.
+ * @apiErrorExample {json} Пример ответа при ошибке:
  *     {
- *       "error": "User not found"
+ *         "error": "Пользователь не найден"
  *     }
+ * @apiExample {curl} Пример использования:
+ *     curl -X PUT -H "Content-Type: application/json" -d '{"name":"Иван Петров","email":"petrov@example.com"}' http://217.114.10.226:5000/api/users/26
  */
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
   const { name, email, phone, divisionId, password } = req.body;
   try {
-    const user = await prisma.user.update({
+    const user = await req.prisma.user.update({
       where: { id: parseInt(id) },
       data: {
         name,
@@ -146,31 +160,38 @@ router.put('/:id', async (req, res) => {
     });
     res.json(user);
   } catch (error) {
+    console.error('Ошибка при обновлении пользователя:', error);
     res.status(400).json({ error: error.message });
   }
 });
 
 /**
- * @api {delete} /api/users/:id Delete a user
- * @apiName DeleteUser
- * @apiGroup Users
- * @apiDescription Deletes a user by ID
- * @apiParam {Number} id User ID (path parameter)
- * @apiSuccess {Boolean} success Operation status
- * @apiError (400) BadRequest Invalid user ID
- * @apiErrorExample {json} Error-Response:
+ * @api {delete} /api/users/:id Удаление пользователя
+ * @apiName УдалениеПользователя
+ * @apiGroup Пользователи
+ * @apiDescription Удаляет пользователя из системы по его идентификатору. Используется для удаления учётной записи, например, при увольнении сотрудника или исключении участника.
+ * @apiParam {Number} id Идентификатор пользователя (параметр пути). Должен быть целым числом, соответствующим записи в таблице `User`.
+ * @apiSuccess {Boolean} success Статус операции. Возвращает `true`, если пользователь успешно удалён.
+ * @apiError (400) BadRequest Ошибка, если пользователь с указанным `id` не найден.
+ * @apiErrorExample {json} Пример ответа при ошибке:
  *     {
- *       "error": "User not found"
+ *         "error": "Пользователь не найден"
  *     }
+ * @apiExample {curl} Пример использования:
+ *     curl -X DELETE http://217.114.10.226:5000/api/users/26
  */
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   try {
-    await prisma.user.delete({ where: { id: parseInt(id) } });
+    await req.prisma.user.delete({ where: { id: parseInt(id) } });
     res.json({ success: true });
   } catch (error) {
+    console.error('Ошибка при удалении пользователя:', error);
     res.status(400).json({ error: error.message });
   }
 });
 
-module.exports = router;
+module.exports = (prisma) => {
+  router.prisma = prisma;
+  return router;
+};
