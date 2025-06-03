@@ -9,9 +9,32 @@ const prisma = new PrismaClient();
 const upload = multer({ storage: multer.memoryStorage() });
 
 /**
- * @route GET /api/meetings/excel/export-template
- * @desc Export meeting template to Excel with three sheets
- * @access Public
+ * @api {get} /api/meetings/excel/export-template Экспорт шаблона заседания в Excel
+ * @apiName ЭкспортШаблонаЗаседания
+ * @apiGroup Excel-Заседания
+ * @apiDescription Экспортирует шаблон для создания заседания в Excel-файл с тремя листами: `MeetingTemplate` (данные заседания и повестки), `Divisions` (список подразделений) и `Speakers` (список докладчиков). Лист `MeetingTemplate` содержит выпадающие списки для выбора подразделений и докладчиков, основанные на данных из листов `Divisions` и `Speakers`. Используется для подготовки шаблона для последующего импорта заседаний. Файл возвращается как вложение с именем `meeting_template.xlsx`.
+ * @apiSuccess {File} meeting_template.xlsx Excel-файл с тремя листами:
+ * @apiSuccess {Object} MeetingTemplate Лист с шаблоном заседания и повестки.
+ * @apiSuccess {String} MeetingTemplate.Название Название заседания (например, "Тестовое заседание").
+ * @apiSuccess {String} MeetingTemplate.Дата_начала Дата и время начала заседания (например, "03.06.2025 10:00").
+ * @apiSuccess {String} MeetingTemplate.Дата_конца Дата и время окончания заседания (например, "03.06.2025 11:00").
+ * @apiSuccess {String} MeetingTemplate.Подразделения Название подразделения (выпадающий список из листа `Divisions`).
+ * @apiSuccess {Number} MeetingTemplate.Номер_вопроса Порядковый номер вопроса повестки (например, 1, 2).
+ * @apiSuccess {String} MeetingTemplate.Вопрос_повестки Название вопроса повестки (например, "Тестовый вопрос 1").
+ * @apiSuccess {String} MeetingTemplate.Докладчик Имя докладчика (выпадающий список из листа `Speakers`).
+ * @apiSuccess {String} MeetingTemplate.Ссылка Ссылка на материалы вопроса (например, "https://example.com/1").
+ * @apiSuccess {Object} Divisions Лист со списком подразделений.
+ * @apiSuccess {String} Divisions.Название Название подразделения (например, "Отдел продаж").
+ * @apiSuccess {Object} Speakers Лист со списком докладчиков.
+ * @apiSuccess {String} Speakers.Подразделение Название подразделения докладчика.
+ * @apiSuccess {String} Speakers.Пользователь Имя пользователя-докладчика.
+ * @apiError (500) ServerError Ошибка сервера или базы данных, например, при сбое подключения к PostgreSQL или проблеме с созданием файла.
+ * @apiErrorExample {json} Пример ответа при ошибке:
+ *     {
+ *         "errors": ["Не удалось экспортировать шаблон заседания: <сообщение об ошибке>"]
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl -o meeting_template.xlsx http://217.114.10.226:5000/api/meetings/excel/export-template
  */
 router.get('/export-template', async (req, res) => {
   try {
@@ -118,9 +141,43 @@ router.get('/export-template', async (req, res) => {
 });
 
 /**
- * @route POST /api/meetings/excel/import
- * @desc Import a single meeting from Excel template
- * @access Public
+ * @api {post} /api/meetings/excel/import Импорт заседания из Excel-шаблона
+ * @apiName ИмпортЗаседания
+ * @apiGroup Excel-Заседания
+ * @apiDescription Импортирует данные о заседании из загруженного Excel-файла, содержащего лист `MeetingTemplate` с информацией о заседании, подразделениях и повестке. Создаёт новое заседание с указанными параметрами, связывает его с подразделениями и добавляет элементы повестки с докладчиками. Файл загружается через `multipart/form-data` с полем `file`. Все операции выполняются в транзакции для обеспечения целостности данных.
+ * @apiBody {File} file Excel-файл с листом `MeetingTemplate` (обязательное поле, загружается через `multipart/form-data`).
+ * @apiBody {Object} file.MeetingTemplate Лист с данными заседания и повестки.
+ * @apiBody {String} file.MeetingTemplate.Название Название заседания (обязательное поле, строка, например, "Тестовое заседание").
+ * @apiBody {String} file.MeetingTemplate.Дата_начала Дата и время начала заседания (обязательное поле, строка в формате, распознаваемом `Date`, например, "03.06.2025 10:00").
+ * @apiBody {String} file.MeetingTemplate.Дата_конца Дата и время окончания заседания (обязательное поле, строка в формате, распознаваемом `Date`).
+ * @apiBody {String} [file.MeetingTemplate.Подразделения] Название подразделения, связанного с заседанием (обязательное поле хотя бы для одной строки, строка).
+ * @apiBody {Number} [file.MeetingTemplate.Номер_вопроса] Порядковый номер вопроса повестки (обязательное поле для повестки, целое число, уникальное в рамках заседания).
+ * @apiBody {String} [file.MeetingTemplate.Вопрос_повестки] Название вопроса повестки (обязательное поле для повестки, строка).
+ * @apiBody {String} [file.MeetingTemplate.Докладчик] Имя докладчика (опционально, строка, должно соответствовать пользователю из подразделений заседания).
+ * @apiBody {String} [file.MeetingTemplate.Ссылка] Ссылка на материалы вопроса (опционально, строка).
+ * @apiSuccess {Boolean} success Статус операции. Возвращает `true` при успешном импорте.
+ * @apiSuccess {Number} meetingId Идентификатор созданного заседания.
+ * @apiSuccess {String[]} errors Пустой массив ошибок при успешном импорте.
+ * @apiError (400) BadRequest Ошибка, если файл не загружен, отсутствует лист `MeetingTemplate`, лист пуст, данные некорректны (например, отсутствует название, невалидные даты, дублирующиеся номера повестки, несуществующие подразделения или докладчики).
+ * @apiError (500) ServerError Ошибка сервера или базы данных, например, при сбое транзакции.
+ * @apiErrorExample {json} Пример ответа при ошибке (нет файла):
+ *     {
+ *         "success": false,
+ *         "errors": ["Файл не загружен"]
+ *     }
+ * @apiErrorExample {json} Пример ответа при ошибке (валидация):
+ *     {
+ *         "success": false,
+ *         "errors": ["Название заседания обязательно в строке 2", "Хотя бы одно подразделение обязательно"]
+ *     }
+ * @apiErrorExample {json} Пример ответа при успешном импорте:
+ *     {
+ *         "success": true,
+ *         "meetingId": 123,
+ *         "errors": []
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl -X POST -F "file=@meeting_template.xlsx" http://217.114.10.226:5000/api/meetings/excel/import
  */
 router.post('/import', upload.array('file'), async (req, res) => {
   try {

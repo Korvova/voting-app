@@ -2,8 +2,28 @@ const express = require('express');
 const router = express.Router();
 
 /**
- * @route GET /api/meetings/:id/agenda-items
- * @desc Get all agenda items for a meeting
+ * @api {get} /api/meetings/:id/agenda-items Получение списка элементов повестки  для заседания
+ * @apiName ПолучениеЭлементовПовестки
+ * @apiGroup Повестка
+ * @apiDescription Возвращает список всех элементов повестки , связанных с указанным заседанием, упорядоченных по номеру (`number`). Используется для отображения повестки  в интерфейсе администратора или участника заседания. Каждый элемент включает информацию о докладчике, если он назначен.
+ * @apiParam {Number} id Идентификатор заседания (параметр пути). Должен быть целым числом, соответствующим записи в таблице `Meeting` базы данных.
+ * @apiSuccess {Object[]} agendaItems Массив объектов элементов повестки .
+ * @apiSuccess {Number} agendaItems.id Идентификатор элемента повестки.
+ * @apiSuccess {Number} agendaItems.number Порядковый номер элемента в повестке.
+ * @apiSuccess {String} agendaItems.title Название или описание элемента повестки (например, "Обсуждение бюджета").
+ * @apiSuccess {Number} [agendaItems.speakerId] Идентификатор докладчика (пользователя), если назначен, или `null`.
+ * @apiSuccess {String} agendaItems.speaker Имя докладчика или строка `"Нет"`, если докладчик не назначен.
+ * @apiSuccess {String} [agendaItems.link] Ссылка на материалы или документы, связанные с элементом повестки (может быть `null`).
+ * @apiSuccess {Boolean} agendaItems.voting Указывает, активно ли голосование по этому элементу (`true` или `false`).
+ * @apiSuccess {Boolean} agendaItems.completed Указывает, завершён ли элемент повестки (`true` или `false`).
+ * @apiSuccess {Boolean} agendaItems.activeIssue Указывает, является ли элемент текущим активным вопросом (`true` или `false`).
+ * @apiError (500) ServerError Ошибка сервера или базы данных, например, при сбое подключения к PostgreSQL или неверном `id` заседания.
+ * @apiErrorExample {json} Пример ответа при ошибке:
+ *     {
+ *         "error": "Внутренняя ошибка сервера"
+ *     }
+ * @apiExample {curl} Пример использования:
+ *     curl http://217.114.10.226:5000/api/meetings/119/agenda-items
  */
 router.get('/meetings/:id/agenda-items', async (req, res) => {
   const { id } = req.params;
@@ -31,8 +51,33 @@ router.get('/meetings/:id/agenda-items', async (req, res) => {
 });
 
 /**
- * @route POST /api/meetings/:id/agenda-items
- * @desc Create a new agenda item
+ * @api {post} /api/meetings/:id/agenda-items Создание нового элемента повестки 
+ * @apiName СозданиеЭлементаПовестки
+ * @apiGroup Повестка
+ * @apiDescription Создаёт новый элемент повестки  для указанного заседания. Используется для добавления вопросов или тем, которые будут обсуждаться на заседании. Обязательные поля: `number`, `title`.
+ * @apiParam {Number} id Идентификатор заседания (параметр пути). Должен быть целым числом, соответствующим записи в таблице `Meeting`.
+ * @apiBody {Number} number Порядковый номер элемента в повестке (целое число, например, 1, 2, 3).
+ * @apiBody {String} title Название или описание элемента повестки (например, "Обсуждение бюджета").
+ * @apiBody {Number} [speakerId] Идентификатор докладчика (пользователя), если назначен (опционально, целое число или `null`).
+ * @apiBody {String} [link] Ссылка на материалы или документы, связанные с элементом повестки (опционально, может быть `null`).
+ * @apiSuccess {Object} agendaItem Созданный объект элемента повестки.
+ * @apiSuccess {Number} agendaItem.id Идентификатор элемента повестки.
+ * @apiSuccess {Number} agendaItem.number Порядковый номер элемента.
+ * @apiSuccess {String} agendaItem.title Название элемента.
+ * @apiSuccess {Number} [agendaItem.speakerId] Идентификатор докладчика или `null`.
+ * @apiSuccess {String} [agendaItem.link] Ссылка на материалы или `null`.
+ * @apiSuccess {Boolean} agendaItem.voting Статус голосования (`false` по умолчанию).
+ * @apiSuccess {Boolean} agendaItem.completed Статус завершения (`false` по умолчанию).
+ * @apiSuccess {Number} agendaItem.meetingId Идентификатор заседания.
+ * @apiSuccess {Date} agendaItem.createdAt Дата создания элемента.
+ * @apiSuccess {Date} agendaItem.updatedAt Дата последнего обновления.
+ * @apiError (400) BadRequest Ошибка, если переданы некорректные данные (например, отсутствуют `number` или `title`, или `meetingId` не существует).
+ * @apiErrorExample {json} Пример ответа при ошибке:
+ *     {
+ *         "error": "Некорректные данные или заседание не найдено"
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl -X POST -H "Content-Type: application/json" -d '{"number":5,"title":"Новый вопрос","speakerId":26,"link":"https://example.com/doc"}' http://217.178.10.226:5000/api/meetings/119/agenda-items
  */
 router.post('/meetings/:id/agenda-items', async (req, res) => {
   const { id } = req.params;
@@ -58,8 +103,38 @@ router.post('/meetings/:id/agenda-items', async (req, res) => {
 });
 
 /**
- * @route PUT /api/meetings/:id/agenda-items/:itemId
- * @desc Update an agenda item
+ * @api {put} /api/meetings/:id/agenda-items/:itemId Обновление элемента повестки 
+ * @apiName ОбновлениеЭлементаПовестки
+ * @apiGroup Повестка
+ * @apiDescription Обновляет существующий элемент повестки  для указанного заседания. Позволяет изменить номер, название, докладчика, ссылку, статус активности вопроса (`activeIssue`) или завершения (`completed`). Если обновляется `activeIssue` на `true`, все другие элементы повестки для этого заседания автоматически становятся неактивными (`activeIssue: false`).
+ * @apiParam {Number} id Идентификатор заседания (параметр пути). Должен быть целым числом, соответствующим записи в `Meeting`.
+ * @apiParam {Number} itemId Идентификатор элемента повестки (параметр пути). Должен быть целым числом, соответствующим записи в `AgendaItem`.
+ * @apiBody {Number} number Порядковый номер элемента в повестке (целое число).
+ * @apiBody {String} title Название или описание элемента повестки.
+ * @apiBody {Number} [speakerId] Идентификатор докладчика (пользователя), если назначен (опционально, целое число или `null`).
+ * @apiBody {String} [link] Ссылка на материалы (опционально, может быть `null`).
+ * @apiBody {Boolean} [activeIssue] Указывает, является ли элемент активным вопросом (опционально, `true` или `false`).
+ * @apiBody {Boolean} [completed] Указывает, завершён ли элемент (опционально, `true` или `false`).
+ * @apiSuccess {Object} agendaItem Обновлённый объект элемента повестки.
+ * @apiSuccess {Number} agendaItem.id Идентификатор элемента повестки.
+ * @apiSuccess {Number} agendaItem.number Порядковый номер элемента.
+ * @apiSuccess {String} agendaItem.title Название элемента.
+ * @apiSuccess {Number} [agendaItem.speakerId] Идентификатор докладчика или `null`.
+ * @apiSuccess {String} [agendaItem.link] Ссылка или `null`.
+ * @apiSuccess {Boolean} agendaItem.voting Статус голосования.
+ * @apiSuccess {Boolean} agendaItem.completed Статус завершения.
+ * @apiSuccess {Boolean} agendaItem.activeIssue Статус активности вопроса.
+ * @apiSuccess {Number} agendaItem.meetingId Идентификатор заседания.
+ * @apiSuccess {Date} agendaItem.createdAt Дата создания.
+ * @apiSuccess {Date} agendaItem.updatedAt Дата обновления.
+ * @apiError (400) BadRequest Ошибка, если элемент или заседание не найдены, или переданы некорректные данные.
+ * @apiError (500) ServerError Ошибка сервера при сбое транзакции.
+ * @apiErrorExample {json} Пример ответа при ошибке:
+ *     {
+ *         "error": "Элемент повестки не найден"
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl -X PUT -H "Content-Type: application/json" -d '{"number":5,"title":"Обновлённый вопрос","speakerId":26,"activeIssue":true}' http://217.178.10.226:5000/api/meetings/119/agenda-items/560
  */
 router.put('/meetings/:id/agenda-items/:itemId', async (req, res) => {
   const { id, itemId } = req.params;
@@ -97,8 +172,21 @@ router.put('/meetings/:id/agenda-items/:itemId', async (req, res) => {
 });
 
 /**
- * @route DELETE /api/meetings/:id/agenda-items/:itemId
- * @desc Delete an agenda item
+ * @api {delete} /api/meetings/:id/agenda-items/:itemId Удаление элемента повестки 
+ * @apiName УдалениеЭлементаПовестки
+ * @apiGroup Повестка
+ * @apiDescription Удаляет элемент повестки  по его идентификатору для указанного заседания. Используется для исключения вопросов из повестки. Перед удалением проверяется существование элемента.
+ * @apiParam {Number} id Идентификатор заседания (параметр пути). Должен быть целым числом, соответствующим записи в `Meeting`.
+ * @apiParam {Number} itemId Идентификатор элемента повестки (параметр пути). Должен быть целым числом, соответствующим записи в `AgendaItem`.
+ * @apiSuccess {Boolean} success Статус операции. Возвращает `true`, если элемент успешно удалён.
+ * @apiError (404) NotFound Ошибка, если элемент повестки или заседание не найдены.
+ * @apiError (400) BadRequest Ошибка, если произошёл сбой при удалении (например, из-за связанных данных).
+ * @apiErrorExample {json} Пример ответа при ошибке:
+ *     {
+ *         "error": "Элемент повестки не найден"
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl -X DELETE http://217.178.10.226:5000/api/meetings/119/agenda-items/560
  */
 router.delete('/meetings/:id/agenda-items/:itemId', async (req, res) => {
   const { id, itemId } = req.params;

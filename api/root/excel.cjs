@@ -9,9 +9,25 @@ const prisma = new PrismaClient();
 const upload = multer({ storage: multer.memoryStorage() });
 
 /**
- * @route GET /api/users/excel/export
- * @desc Export users and divisions to Excel with two sheets and dropdown in Users
- * @access Public
+ * @api {get} /api/users/excel/export Экспорт пользователей и подразделений в Excel
+ * @apiName ЭкспортПользователей
+ * @apiGroup Excel
+ * @apiDescription Экспортирует данные о пользователях и подразделениях в Excel-файл с двумя листами: `Users` (пользователи) и `Divisions` (подразделения). Лист `Users` содержит выпадающий список для выбора подразделений, основанный на данных из листа `Divisions`. Используется для создания шаблона или выгрузки данных для анализа. Файл возвращается как вложение с именем `users.xlsx`.
+ * @apiSuccess {File} users.xlsx Excel-файл с двумя листами:
+ * @apiSuccess {Object} Users Лист с данными пользователей.
+ * @apiSuccess {String} Users.ФИО Имя пользователя (поле `name`).
+ * @apiSuccess {String} Users.Email Электронная почта пользователя (поле `email`).
+ * @apiSuccess {String} Users.Моб_Тел Номер телефона пользователя (может быть пустым).
+ * @apiSuccess {String} Users.Подразделение Название подразделения или `"Нет"`, если не привязано.
+ * @apiSuccess {Object} Divisions Лист с данными подразделений.
+ * @apiSuccess {String} Divisions.Название Название подразделения (поле `name`).
+ * @apiError (500) ServerError Ошибка сервера или базы данных, например, при сбое подключения к PostgreSQL или проблеме с созданием файла.
+ * @apiErrorExample {json} Пример ответа при ошибке:
+ *     {
+ *         "error": "Не удалось экспортировать пользователей"
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl -o users.xlsx http://217.114.10.226:5000/api/users/excel/export
  */
 router.get('/export', async (req, res) => {
   try {
@@ -75,9 +91,43 @@ router.get('/export', async (req, res) => {
 });
 
 /**
- * @route POST /api/users/excel/import
- * @desc Import users and divisions from Excel with two sheets
- * @access Public
+ * @api {post} /api/users/excel/import Импорт пользователей и подразделений из Excel
+ * @apiName ИмпортПользователей
+ * @apiGroup Excel
+ * @apiDescription Импортирует данные о пользователях и подразделениях из загруженного Excel-файла, содержащего два листа: `Users` (пользователи) и `Divisions` (подразделения). Создаёт новые подразделения, если они отсутствуют, и добавляет или обновляет пользователей, связывая их с подразделениями. Файл загружается через `multipart/form-data` с полем `file`. Новые пользователи создаются с дефолтным паролем `"123"`.
+ * @apiBody {File} file Excel-файл с листами `Users` и `Divisions` (обязательное поле, загружается через `multipart/form-data`).
+ * @apiBody {Object} file.Users Лист с данными пользователей в Excel-файле.
+ * @apiBody {String} file.Users.ФИО Имя пользователя (обязательное поле, строка).
+ * @apiBody {String} file.Users.Email Электронная почта пользователя (обязательное поле, валидный email, например, "user@example.com").
+ * @apiBody {String} [file.Users.Моб_Тел] Номер телефона пользователя (опционально, строка).
+ * @apiBody {String} [file.Users.Подразделение] Название подразделения или `"Нет"` (опционально, строка).
+ * @apiBody {Object} file.Divisions Лист с данными подразделений в Excel-файле.
+ * @apiBody {String} file.Divisions.Название Название подразделения (обязательное поле, строка).
+ * @apiSuccess {Boolean} success Статус операции. Возвращает `true` при успешном импорте.
+ * @apiSuccess {Number} addedUsers Количество созданных пользователей.
+ * @apiSuccess {Number} updatedUsers Количество обновлённых пользователей.
+ * @apiSuccess {Number} addedDivisions Количество созданных подразделений.
+ * @apiSuccess {String[]} errors Массив сообщений об ошибках для отдельных строк, если они произошли.
+ * @apiError (400) BadRequest Ошибка, если файл не загружен, отсутствуют листы `Users` или `Divisions`, лист `Users` пуст, или данные некорректны (например, невалидный email).
+ * @apiError (500) ServerError Ошибка сервера или базы данных, например, при сбое транзакции.
+ * @apiErrorExample {json} Пример ответа при ошибке (нет файла):
+ *     {
+ *         "error": "Файл не загружен"
+ *     }
+ * @apiErrorExample {json} Пример ответа при ошибке (некорректные листы):
+ *     {
+ *         "error": "Файл должен содержать листы Users и Divisions"
+ *     }
+ * @apiErrorExample {json} Пример ответа при успешном импорте с ошибками:
+ *     {
+ *         "success": true,
+ *         "addedUsers": 2,
+ *         "updatedUsers": 1,
+ *         "addedDivisions": 1,
+ *         "errors": ["Неверный формат email: invalid@"]
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl -X POST -F "file=@users.xlsx" http://217.114.10.226:5000/api/users/excel/import
  */
 router.post('/import', upload.array('file'), async (req, res) => {
   try {

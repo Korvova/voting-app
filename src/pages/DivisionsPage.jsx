@@ -314,7 +314,7 @@ const handleFileChange = async (e) => {
                       <td>{user?.name || 'Неизвестный'}</td>
                       <td>{user?.email || 'Неизвестный'}</td>
                       <td>
-                        <button onClick={() => handleUserRemove(userId, 'add')}>⛓️‍💥</button>
+                        <button onClick={() => handleUserRemove(userId, 'add')}>✂⛓️</button>
                       </td>
                     </tr>
                   );
@@ -365,7 +365,7 @@ const handleFileChange = async (e) => {
                       <td>{user?.name || 'Неизвестный'}</td>
                       <td>{user?.email || 'Неизвестный'}</td>
                       <td>
-                        <button onClick={() => handleUserRemove(userId, 'edit')}>⛓️‍💥</button>
+                        <button onClick={() => handleUserRemove(userId, 'edit')}>✂⛓️</button>
                       </td>
                     </tr>
                   );
