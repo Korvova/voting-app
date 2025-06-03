@@ -95,44 +95,45 @@ function UsersPage() {
     fileInputRef.current.click();
   };
 
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) {
-      return;
+const handleFileChange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) {
+    return;
+  }
+
+  if (!file.name.endsWith('.xlsx')) {
+    alert('Выберите файл формата .xlsx');
+    fileInputRef.current.value = '';
+    return;
+  }
+
+  setIsImporting(true);
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post('http://217.114.10.226:5000/api/users/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+    const { addedUsers, updatedUsers, addedDivisions, errors } = response.data;
+    let message = `Импорт завершен: добавлено ${addedUsers} пользователей, обновлено ${updatedUsers} пользователей, добавлено ${addedDivisions} подразделений.`;
+    if (errors.length > 0) {
+      message += `\nОшибки:\n${errors.join('\n')}`;
     }
+    alert(message);
 
-    if (!file.name.endsWith('.xlsx')) {
-      alert('Выберите файл формата .xlsx');
-      fileInputRef.current.value = '';
-      return;
-    }
-
-    setIsImporting(true);
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await axios.post('http://217.114.10.226:5000/api/users/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      const { added, updated, errors } = response.data;
-      let message = `Импорт завершен: добавлено ${added}, обновлено ${updated} пользователей.`;
-      if (errors.length > 0) {
-        message += `\nОшибки:\n${errors.join('\n')}`;
-      }
-      alert(message);
-
-      fetchUsers();
-    } catch (error) {
-      console.error('Error importing users:', error.message);
-      alert('Ошибка при импорте пользователей');
-    } finally {
-      setIsImporting(false);
-      fileInputRef.current.value = '';
-    }
-  };
+    fetchUsers();
+    fetchDivisions();
+  } catch (error) {
+    console.error('Error importing users:', error.message);
+    alert('Ошибка при импорте пользователей');
+  } finally {
+    setIsImporting(false);
+    fileInputRef.current.value = '';
+  }
+};
 
   const handleAddUser = () => {
     setShowAddModal(true);

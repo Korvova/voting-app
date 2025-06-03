@@ -1,19 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import './DivisionsPage.css';
 
 function DivisionsPage() {
   const [divisions, setDivisions] = useState([]);
-  const [users, setUsers] = useState([]); // Список всех пользователей
-  const [availableUsers, setAvailableUsers] = useState([]); // Пользователи без подразделения
+  const [users, setUsers] = useState([]);
+  const [availableUsers, setAvailableUsers] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [divisionToDelete, setDivisionToDelete] = useState(null);
   const [editDivision, setEditDivision] = useState(null);
   const [newDivision, setNewDivision] = useState({ name: '', users: [] });
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
-    // Получение списка подразделений через API
     const fetchDivisions = async () => {
       try {
         const response = await axios.get('http://217.114.10.226:5000/api/divisions');
@@ -23,12 +25,10 @@ function DivisionsPage() {
       }
     };
 
-    // Получение списка пользователей через API
     const fetchUsers = async () => {
       try {
         const response = await axios.get('http://217.114.10.226:5000/api/users');
         setUsers(response.data);
-        // Фильтруем пользователей, у которых нет подразделения
         setAvailableUsers(response.data.filter(user => !user.division || user.division === 'Нет'));
       } catch (error) {
         console.error('Error fetching users:', error.message);
@@ -39,13 +39,82 @@ function DivisionsPage() {
     fetchUsers();
   }, []);
 
+  const handleExportToExcel = async () => {
+    try {
+      const response = await axios.get('http://217.114.10.226:5000/api/users/export', {
+        responseType: 'blob',
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'users.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting divisions:', error.message);
+      alert('Ошибка при экспорте подразделений');
+    }
+  };
+
+  const handleImportFromExcel = () => {
+    fileInputRef.current.click();
+  };
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) {
+      return;
+    }
+
+    if (!file.name.endsWith('.xlsx')) {
+      alert('Выберите файл формата .xlsx');
+      fileInputRef.current.value = '';
+      return;
+    }
+
+    setIsImporting(true);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await axios.post('http://217.114.10.226:5000/api/users/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      const { addedUsers, updatedUsers, addedDivisions, errors } = response.data;
+      let message = `Импорт завершен: добавлено ${addedUsers} пользователей, обновлено ${updatedUsers} пользователей, добавлено ${addedDivisions} подразделений.`;
+      if (errors.length > 0) {
+        message += `\nОшибки:\n${errors.join('\n')}`;
+      }
+      alert(message);
+
+      // Обновляем данные
+      const [divisionsResponse, usersResponse] = await Promise.all([
+        axios.get('http://217.114.10.226:5000/api/divisions'),
+        axios.get('http://217.114.10.226:5000/api/users'),
+      ]);
+      setDivisions(divisionsResponse.data);
+      setUsers(usersResponse.data);
+      setAvailableUsers(usersResponse.data.filter(user => !user.division || user.division === 'Нет'));
+    } catch (error) {
+      console.error('Error importing divisions:', error.message);
+      alert('Ошибка при импорте подразделений');
+    } finally {
+      setIsImporting(false);
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleAddDivision = () => {
     setShowAddModal(true);
   };
 
   const handleEditDivision = async (division) => {
     try {
-      // Получаем пользователей, привязанных к подразделению
       const response = await axios.get('http://217.114.10.226:5000/api/users');
       const divisionUsers = response.data
         .filter(user => user.division !== 'Нет' && user.division === division.name)
@@ -68,7 +137,6 @@ function DivisionsPage() {
     try {
       await axios.delete(`http://217.114.10.226:5000/api/divisions/${divisionToDelete.id}`);
       setDivisions(divisions.filter(division => division.id !== divisionToDelete.id));
-      // Обновляем список доступных пользователей после удаления подразделения
       const response = await axios.get('http://217.114.10.226:5000/api/users');
       setUsers(response.data);
       setAvailableUsers(response.data.filter(user => !user.division || user.division === 'Нет'));
@@ -99,11 +167,9 @@ function DivisionsPage() {
       try {
         const response = await axios.post('http://217.114.10.226:5000/api/divisions', { name: newDivision.name });
         setDivisions([...divisions, { ...response.data, userCount: newDivision.users.length }]);
-        // Назначить пользователей подразделению
         await Promise.all(newDivision.users.map(userId =>
           axios.put(`http://217.114.10.226:5000/api/users/${userId}`, { divisionId: response.data.id })
         ));
-        // Обновляем список доступных пользователей
         const userResponse = await axios.get('http://217.114.10.226:5000/api/users');
         setUsers(userResponse.data);
         setAvailableUsers(userResponse.data.filter(user => !user.division || user.division === 'Нет'));
@@ -115,11 +181,9 @@ function DivisionsPage() {
       try {
         const response = await axios.put(`http://217.114.10.226:5000/api/divisions/${editDivision.id}`, { name: editDivision.name });
         setDivisions(divisions.map(division => (division.id === editDivision.id ? { ...response.data, userCount: editDivision.users.length } : division)));
-        // Назначить пользователей подразделению
         await Promise.all(editDivision.users.map(userId =>
           axios.put(`http://217.114.10.226:5000/api/users/${userId}`, { divisionId: editDivision.id })
         ));
-        // Обновляем список доступных пользователей
         const userResponse = await axios.get('http://217.114.10.226:5000/api/users');
         setUsers(userResponse.data);
         setAvailableUsers(userResponse.data.filter(user => !user.division || user.division === 'Нет'));
@@ -153,14 +217,12 @@ function DivisionsPage() {
 
   const handleUserRemove = async (userId, type) => {
     try {
-      // Отвязываем пользователя от подразделения
       await axios.put(`http://217.114.10.226:5000/api/users/${userId}`, { divisionId: null });
       if (type === 'add') {
         setNewDivision({ ...newDivision, users: newDivision.users.filter(id => id !== userId) });
       } else if (type === 'edit') {
         setEditDivision({ ...editDivision, users: editDivision.users.filter(id => id !== userId) });
       }
-      // Обновляем список доступных пользователей
       const userResponse = await axios.get('http://217.114.10.226:5000/api/users');
       setUsers(userResponse.data);
       setAvailableUsers(userResponse.data.filter(user => !user.division || user.division === 'Нет'));
@@ -171,7 +233,24 @@ function DivisionsPage() {
 
   return (
     <div className="divisions-page">
-      <button className="add-button" onClick={handleAddDivision}>+ Добавить подразделение</button>
+      <div className="excel-buttons">
+        <button className="small-button" onClick={handleImportFromExcel} disabled={isImporting}>
+          {isImporting ? 'Идёт импорт...' : '📥Импорт из Excel'}
+        </button>
+        <button className="small-button" onClick={handleExportToExcel}>
+          📤Экспорт в Excel
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+      </div>
+      <div className="button-group">
+        <button className="add-button" onClick={handleAddDivision}>+ Добавить подразделение</button>
+      </div>
       <table className="divisions-table">
         <thead>
           <tr>

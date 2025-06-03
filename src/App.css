@@ -178,12 +178,12 @@ button:hover {
 
 .content {
   flex: 1;
-  padding: 2rem;
+  padding: 0.1rem;
   text-align: center;
 }
 
 .users-page {
-  padding: 2rem;
+  padding: 1rem;
 }
 
 .add-button {
@@ -367,7 +367,7 @@ button:hover {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0.5rem;
+  padding: 0.5 rem;
   border-bottom: 1px solid #e0e0e0;
 }
 

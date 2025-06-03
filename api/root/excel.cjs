@@ -1,13 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const { PrismaClient } = require('@prisma/client');
+const ExcelJS = require('exceljs');
 const XLSX = require('xlsx');
+const multer = require('multer');
 
 const prisma = new PrismaClient();
+const upload = multer({ storage: multer.memoryStorage() });
 
 /**
  * @route GET /api/users/export
- * @desc Export users to Excel
+ * @desc Export users and divisions to Excel with two sheets and dropdown in Users
  * @access Public
  */
 router.get('/export', async (req, res) => {
@@ -17,21 +20,58 @@ router.get('/export', async (req, res) => {
       include: { division: true },
     });
 
-    // Формируем данные для Excel
-    const data = users.map(user => ({
-      ФИО: user.name,
-      Email: user.email,
-      'Моб. Тел': user.phone || '',
-      Подразделение: user.division ? user.division.name : 'Нет',
-    }));
+    // Получаем все подразделения
+    const divisions = await prisma.division.findMany();
 
-    // Создаём новый Excel-файл
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Users');
+    // Создаём новую книгу Excel
+    const workbook = new ExcelJS.Workbook();
+    const userSheet = workbook.addWorksheet('Users');
+    const divisionSheet = workbook.addWorksheet('Divisions');
 
-    // Генерируем бинарный буфер
-    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    // Добавляем заголовки в лист Users
+    userSheet.columns = [
+      { header: 'ФИО', key: 'name', width: 20 },
+      { header: 'Email', key: 'email', width: 30 },
+      { header: 'Моб. Тел', key: 'phone', width: 15 },
+      { header: 'Подразделение', key: 'division', width: 20 },
+    ];
+
+    // Заполняем данные пользователей
+    users.forEach(user => {
+      userSheet.addRow({
+        name: user.name,
+        email: user.email,
+        phone: user.phone || '',
+        division: user.division ? user.division.name : 'Нет',
+      });
+    });
+
+    // Добавляем заголовок в лист Divisions
+    divisionSheet.columns = [
+      { header: 'Название', key: 'name', width: 20 },
+    ];
+
+    // Заполняем данные подразделений и добавляем "Нет"
+    divisions.forEach(division => {
+      divisionSheet.addRow({ name: division.name });
+    });
+    divisionSheet.addRow({ name: 'Нет' });
+
+    // Настраиваем выпадающий список для столбца Подразделение (D) в листе Users
+    const divisionRange = 'Divisions!$A$2:$A$1048576';
+    userSheet.getColumn('D').eachCell((cell, rowNumber) => {
+      if (rowNumber > 1) { // Пропускаем заголовок
+        cell.dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [divisionRange],
+          showDropDown: true,
+        };
+      }
+    });
+
+    // Генерируем буфер
+    const buffer = await workbook.xlsx.writeBuffer();
 
     // Устанавливаем заголовки для скачивания
     res.setHeader('Content-Disposition', 'attachment; filename=users.xlsx');
@@ -45,20 +85,9 @@ router.get('/export', async (req, res) => {
   }
 });
 
-
-
-
-
-
-
-
-
-const multer = require('multer');
-const upload = multer({ storage: multer.memoryStorage() });
-
 /**
  * @route POST /api/users/import
- * @desc Import users from Excel
+ * @desc Import users and divisions from Excel with two sheets
  * @access Public
  */
 router.post('/import', upload.array('file'), async (req, res) => {
@@ -69,79 +98,118 @@ router.post('/import', upload.array('file'), async (req, res) => {
 
     const file = req.files[0];
     const workbook = XLSX.read(file.buffer, { type: 'buffer' });
-    const sheetName = workbook.SheetNames[0];
-    const sheet = workbook.Sheets[sheetName];
-    const data = XLSX.utils.sheet_to_json(sheet);
 
-    if (data.length === 0) {
-      return res.status(400).json({ error: 'File is empty' });
+    // Проверяем наличие листов
+    const userSheetName = workbook.SheetNames.includes('Users') ? 'Users' : null;
+    const divisionSheetName = workbook.SheetNames.includes('Divisions') ? 'Divisions' : null;
+
+    if (!userSheetName || !divisionSheetName) {
+      return res.status(400).json({ error: 'File must contain Users and Divisions sheets' });
     }
 
-    const results = { added: 0, updated: 0, errors: [] };
+    const userSheet = workbook.Sheets[userSheetName];
+    const divisionSheet = workbook.Sheets[divisionSheetName];
 
-    for (const row of data) {
-      try {
-        const email = row['Email']?.toString().trim();
-        const name = row['ФИО']?.toString().trim();
-        const phone = row['Моб. Тел']?.toString().trim() || null;
-        const divisionName = row['Подразделение']?.toString().trim();
+    const userData = XLSX.utils.sheet_to_json(userSheet);
+    const divisionData = XLSX.utils.sheet_to_json(divisionSheet);
 
-        if (!email || !name) {
-          results.errors.push(`Missing required fields for row: ${JSON.stringify(row)}`);
-          continue;
-        }
+    if (userData.length === 0) {
+      return res.status(400).json({ error: 'Users sheet is empty' });
+    }
 
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        if (!emailRegex.test(email)) {
-          results.errors.push(`Invalid email format: ${email}`);
-          continue;
-        }
+    const results = { addedUsers: 0, updatedUsers: 0, addedDivisions: 0, errors: [] };
 
-        let divisionId = null;
-        if (divisionName && divisionName !== 'Нет') {
-          const division = await prisma.division.findFirst({
+    // Обрабатываем подразделения в транзакции
+    await prisma.$transaction(async (tx) => {
+      // Маппинг названий подразделений и их ID
+      const divisionMap = new Map();
+
+      // Сначала обрабатываем лист Divisions
+      for (const row of divisionData) {
+        const divisionName = row['Название']?.toString().trim();
+        if (!divisionName || divisionName === 'Нет') continue;
+
+        try {
+          let division = await tx.division.findFirst({
             where: { name: divisionName },
           });
+
           if (!division) {
-            results.errors.push(`Division not found: ${divisionName}`);
+            division = await tx.division.create({
+              data: { name: divisionName },
+            });
+            results.addedDivisions++;
+          }
+
+          divisionMap.set(divisionName, division.id);
+        } catch (error) {
+          results.errors.push(`Error processing division ${divisionName}: ${error.message}`);
+        }
+      }
+
+      // Затем обрабатываем лист Users
+      for (const row of userData) {
+        try {
+          const email = row['Email']?.toString().trim();
+          const name = row['ФИО']?.toString().trim();
+          const phone = row['Моб. Тел']?.toString().trim() || null;
+          const divisionName = row['Подразделение']?.toString().trim();
+
+          if (!email || !name) {
+            results.errors.push(`Missing required fields for row: ${JSON.stringify(row)}`);
             continue;
           }
-          divisionId = division.id;
-        }
 
-        const existingUser = await prisma.user.findUnique({ where: { email } });
+          const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+          if (!emailRegex.test(email)) {
+            results.errors.push(`Invalid email format: ${email}`);
+            continue;
+          }
 
-        if (existingUser) {
-          await prisma.user.update({
-            where: { email },
-            data: {
-              name,
-              phone,
-              divisionId,
-            },
-          });
-          results.updated++;
-        } else {
-          await prisma.user.create({
-            data: {
-              name,
-              email,
-              phone,
-              divisionId,
-              password: '123',
-            },
-          });
-          results.added++;
+          let divisionId = null;
+          if (divisionName && divisionName !== 'Нет') {
+            divisionId = divisionMap.get(divisionName);
+            if (!divisionId) {
+              results.errors.push(`Division not found: ${divisionName}`);
+              continue;
+            }
+          }
+
+          const existingUser = await tx.user.findUnique({ where: { email } });
+
+          if (existingUser) {
+            await tx.user.update({
+              where: { email },
+              data: {
+                name,
+                phone,
+                divisionId,
+              },
+            });
+            results.updatedUsers++;
+          } else {
+            await tx.user.create({
+              data: {
+                name,
+                email,
+                phone,
+                divisionId,
+                password: '123',
+              },
+            });
+            results.addedUsers++;
+          }
+        } catch (error) {
+          results.errors.push(`Error processing user row ${JSON.stringify(row)}: ${error.message}`);
         }
-      } catch (error) {
-        results.errors.push(`Error processing row ${JSON.stringify(row)}: ${error.message}`);
       }
-    }
+    });
 
     res.json({
       success: true,
-      added: results.added,
-      updated: results.updated,
+      addedUsers: results.addedUsers,
+      updatedUsers: results.updatedUsers,
+      addedDivisions: results.addedDivisions,
       errors: results.errors,
     });
   } catch (error) {
@@ -149,14 +217,5 @@ router.post('/import', upload.array('file'), async (req, res) => {
     res.status(500).json({ error: 'Failed to import users' });
   }
 });
-
-
-
-
-
-
-
-
-
 
 module.exports = router;
