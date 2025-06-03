@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Routes, Route, Link } from 'react-router-dom';
 import axios from 'axios';
+import './MeetingsPage.css';
 
 function MeetingsPage() {
   return (
@@ -15,40 +16,40 @@ function MeetingsPage() {
 
 function MeetingsList() {
   const [meetings, setMeetings] = useState([]);
-  const [divisions, setDivisions] = useState([]); // Список подразделений
-  const [users, setUsers] = useState([]); // Список всех пользователей
+  const [divisions, setDivisions] = useState([]);
+  const [users, setUsers] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showErrorModal, setShowErrorModal] = useState(false); // Для ошибки с докладчиком
-  const [errorMessage, setErrorMessage] = useState(''); // Сообщение об ошибке
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [meetingToDelete, setMeetingToDelete] = useState(null);
   const [editMeeting, setEditMeeting] = useState(null);
   const [newMeeting, setNewMeeting] = useState({
     name: '',
     startTime: '',
     endTime: '',
-    divisionIds: [], // Храним ID подразделений
+    divisionIds: [],
     agendaItems: [],
   });
-  const [tempMeetingId, setTempMeetingId] = useState(null); // Временный ID для нового заседания
-  const [isDeletingTempMeeting, setIsDeletingTempMeeting] = useState(false); // Флаг для предотвращения повторного удаления
-  const [isSaved, setIsSaved] = useState(false); // Флаг для отслеживания успешного сохранения
+  const [tempMeetingId, setTempMeetingId] = useState(null);
+  const [isDeletingTempMeeting, setIsDeletingTempMeeting] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
-    // Получение списка заседаний через API
     const fetchMeetings = async () => {
       try {
         const response = await axios.get('http://217.114.10.226:5000/api/meetings');
         console.log('Fetched meetings on frontend:', response.data);
         setMeetings(response.data);
-        console.log('Updated meetings state:', response.data); // Логируем состояние после обновления
+        console.log('Updated meetings state:', response.data);
       } catch (error) {
         console.error('Error fetching meetings:', error.message);
       }
     };
 
-    // Получение списка подразделений через API
     const fetchDivisions = async () => {
       try {
         const response = await axios.get('http://217.114.10.226:5000/api/divisions');
@@ -58,7 +59,6 @@ function MeetingsList() {
       }
     };
 
-    // Получение списка пользователей через API
     const fetchUsers = async () => {
       try {
         const response = await axios.get('http://217.114.10.226:5000/api/users');
@@ -73,7 +73,78 @@ function MeetingsList() {
     fetchUsers();
   }, []);
 
-  // Фильтрация пользователей для докладчиков (только из выбранных подразделений)
+  const handleExportToExcel = async () => {
+    try {
+      const response = await axios.get('http://217.114.10.226:5000/api/meetings/excel/export-template', {
+        responseType: 'blob',
+      });
+
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'meeting_template.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error exporting meeting template:', error.message);
+      alert('Ошибка при экспорте шаблона заседания');
+    }
+  };
+
+  const handleImportFromExcel = () => {
+    fileInputRef.current.click();
+  };
+
+
+
+const handleFileChange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) {
+    return;
+  }
+
+  if (!file.name.endsWith('.xlsx')) {
+    alert('Выберите файл формата .xlsx');
+    fileInputRef.current.value = '';
+    return;
+  }
+
+  setIsImporting(true);
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post('http://217.114.10.226:5000/api/meetings/excel/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+    const { success, meetingId, errors } = response.data;
+    if (success) {
+      alert(`Заседание успешно импортировано с ID: ${meetingId}`);
+      const fetchMeetingsResponse = await axios.get('http://217.114.10.226:5000/api/meetings');
+      setMeetings(fetchMeetingsResponse.data);
+    } else {
+      alert(`Ошибка импорта:\n${errors.join('\n')}`);
+    }
+  } catch (error) {
+    console.error('Error importing meeting:', error);
+    const errorMessage = error.response?.data?.errors?.join('\n') || error.message;
+    alert(`Ошибка импорта:\n${errorMessage}`);
+  } finally {
+    setIsImporting(false);
+    fileInputRef.current.value = '';
+  }
+};
+
+
+
+
+
+
+
   const getAvailableSpeakers = (selectedDivisionIds) => {
     if (!selectedDivisionIds || selectedDivisionIds.length === 0) return [];
     const selectedDivisionNames = divisions
@@ -83,13 +154,12 @@ function MeetingsList() {
   };
 
   const handleAddMeeting = async () => {
-    // Создаём временное заседание без повесток, чтобы сохранить ID
     try {
       const response = await axios.post('http://217.114.10.226:5000/api/meetings', {
         name: newMeeting.name || 'Временное заседание',
         startTime: newMeeting.startTime ? new Date(newMeeting.startTime).toISOString() : new Date().toISOString(),
         endTime: newMeeting.endTime ? new Date(newMeeting.endTime).toISOString() : new Date().toISOString(),
-        divisionIds: newMeeting.divisionIds, // Отправляем ID подразделений
+        divisionIds: newMeeting.divisionIds,
       });
       setTempMeetingId(response.data.id);
       setShowAddModal(true);
@@ -100,9 +170,7 @@ function MeetingsList() {
 
   const handleEditMeeting = async (meeting) => {
     try {
-      // Получаем повестки для заседания
       const response = await axios.get(`http://217.114.10.226:5000/api/meetings/${meeting.id}/agenda-items`);
-      // Получаем ID подразделений из их названий
       const divisionNames = meeting.divisions ? meeting.divisions.split(', ') : [];
       const divisionIds = divisions
         .filter(division => divisionNames.includes(division.name))
@@ -113,7 +181,7 @@ function MeetingsList() {
         endTime: meeting.endTime.slice(0, 16),
         divisionIds: divisionIds,
         agendaItems: response.data.map(item => ({
-          id: item.id, // Сохраняем ID для обновления
+          id: item.id,
           number: item.number,
           title: item.title,
           speakerId: item.speakerId ? item.speakerId.toString() : '',
@@ -143,11 +211,11 @@ function MeetingsList() {
     try {
       await axios.delete(`http://217.114.10.226:5000/api/meetings/${meetingToDelete.id}`);
       setMeetings(meetings.filter(meeting => meeting.id !== meetingToDelete.id));
-      setShowDeleteModal(false); // Закрываем модальное окно
+      setShowDeleteModal(false);
       setMeetingToDelete(null);
     } catch (error) {
       console.error('Error deleting meeting:', error.message);
-      setShowDeleteModal(false); // Закрываем модальное окно даже при ошибке
+      setShowDeleteModal(false);
       setMeetingToDelete(null);
     }
   };
@@ -170,23 +238,22 @@ function MeetingsList() {
 
   const handleModalClose = (type) => {
     if (type === 'add') {
-      // Удаляем временное заседание, только если оно не было сохранено
       if (tempMeetingId && !isDeletingTempMeeting && !isSaved) {
-        setIsDeletingTempMeeting(true); // Устанавливаем флаг, чтобы избежать повторных запросов
+        setIsDeletingTempMeeting(true);
         axios.delete(`http://217.114.10.226:5000/api/meetings/${tempMeetingId}`).catch(error => {
           console.error('Error deleting temporary meeting:', error.message);
         }).finally(() => {
-          setIsDeletingTempMeeting(false); // Сбрасываем флаг после завершения
+          setIsDeletingTempMeeting(false);
         });
       }
       setShowAddModal(false);
       setNewMeeting({ name: '', startTime: '', endTime: '', divisionIds: [], agendaItems: [] });
       setTempMeetingId(null);
-      setIsSaved(false); // Сбрасываем флаг после закрытия
+      setIsSaved(false);
     } else if (type === 'edit') {
       setShowEditModal(false);
       setEditMeeting(null);
-      setIsSaved(false); // Сбрасываем флаг после закрытия
+      setIsSaved(false);
     } else if (type === 'error') {
       setShowErrorModal(false);
       setErrorMessage('');
@@ -197,12 +264,11 @@ function MeetingsList() {
     if (type === 'add') {
       console.log('Sending new meeting data:', newMeeting);
       try {
-        // Обновляем временное заседание
         const response = await axios.put(`http://217.114.10.226:5000/api/meetings/${tempMeetingId}`, {
           ...newMeeting,
           startTime: newMeeting.startTime ? new Date(newMeeting.startTime).toISOString() : null,
           endTime: newMeeting.endTime ? new Date(newMeeting.endTime).toISOString() : null,
-          divisionIds: newMeeting.divisionIds, // Отправляем ID подразделений
+          divisionIds: newMeeting.divisionIds,
         });
         const updatedMeeting = {
           ...response.data,
@@ -214,15 +280,12 @@ function MeetingsList() {
         };
         console.log('Meeting saved successfully:', updatedMeeting);
 
-        // Даём серверу время на сохранение данных
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // Загружаем обновлённый список заседаний с сервера
         const fetchMeetingsResponse = await axios.get('http://217.114.10.226:5000/api/meetings');
         setMeetings(fetchMeetingsResponse.data);
         console.log('Updated meetings list after save:', fetchMeetingsResponse.data);
 
-        // Закрываем модальное окно без удаления заседания
         setShowAddModal(false);
         setNewMeeting({ name: '', startTime: '', endTime: '', divisionIds: [], agendaItems: [] });
         setTempMeetingId(null);
@@ -232,7 +295,6 @@ function MeetingsList() {
       }
     } else if (type === 'edit') {
       console.log('Sending edit meeting data:', editMeeting);
-      // Проверяем статус заседания перед редактированием
       if (editMeeting.status === 'COMPLETED') {
         setErrorMessage('Нельзя редактировать завершённое заседание.');
         setShowErrorModal(true);
@@ -243,7 +305,7 @@ function MeetingsList() {
           ...editMeeting,
           startTime: editMeeting.startTime ? new Date(editMeeting.startTime).toISOString() : null,
           endTime: editMeeting.endTime ? new Date(editMeeting.endTime).toISOString() : null,
-          divisionIds: editMeeting.divisionIds, // Отправляем ID подразделений
+          divisionIds: editMeeting.divisionIds,
         });
         const updatedMeeting = {
           ...response.data,
@@ -255,15 +317,12 @@ function MeetingsList() {
         };
         console.log('Meeting edited successfully:', updatedMeeting);
 
-        // Даём серверу время на сохранение данных
         await new Promise(resolve => setTimeout(resolve, 500));
 
-        // Загружаем обновлённый список заседаний с сервера
         const fetchMeetingsResponse = await axios.get('http://217.114.10.226:5000/api/meetings');
         setMeetings(fetchMeetingsResponse.data);
         console.log('Updated meetings list after edit:', fetchMeetingsResponse.data);
 
-        // Закрываем модальное окно без удаления заседания
         setShowEditModal(false);
         setEditMeeting(null);
         setIsSaved(false);
@@ -298,7 +357,6 @@ function MeetingsList() {
     const selectedDivisionIds = type === 'add' ? newMeeting.divisionIds : editMeeting.divisionIds;
     const agendaItems = type === 'add' ? newMeeting.agendaItems : editMeeting.agendaItems;
 
-    // Проверяем, есть ли докладчики из этого подразделения
     const speakersFromDivision = getAvailableSpeakers([divisionId]);
     const speakerIdsFromDivision = speakersFromDivision.map(user => user.id.toString());
     const hasActiveSpeaker = agendaItems.some(item => speakerIdsFromDivision.includes(item.speakerId));
@@ -408,6 +466,21 @@ function MeetingsList() {
 
   return (
     <>
+      <div className="excel-buttons">
+        <button className="small-button" onClick={handleExportToExcel}>
+          📤Экспорт шаблон Excel
+        </button>
+        <button className="small-button" onClick={handleImportFromExcel} disabled={isImporting}>
+          {isImporting ? 'Идёт импорт...' : '📥Импорт из Excel'}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+      </div>
       <div className="meetings-header">
         <button className="add-button" onClick={handleAddMeeting}>+ Добавить заседание</button>
         <Link to="/admin/meetings/archive" className="archive-link">Архив заседаний</Link>
@@ -702,11 +775,10 @@ function MeetingsList() {
 
 function MeetingsArchive() {
   const [meetings, setMeetings] = useState([]);
-  const [showDeleteModal, setShowDeleteModal] = useState(false); // Модальное окно для удаления
-  const [meetingToDelete, setMeetingToDelete] = useState(null); // Заседание, которое будем удалять
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [meetingToDelete, setMeetingToDelete] = useState(null);
 
   useEffect(() => {
-    // Получение списка архивных заседаний через API
     const fetchMeetings = async () => {
       try {
         const response = await axios.get('http://217.114.10.226:5000/api/meetings/archived');
@@ -753,7 +825,7 @@ function MeetingsArchive() {
             <th>Конец</th>
             <th>Подразделения</th>
             <th>Результат</th>
-            <th></th> {/* Добавляем колонку для кнопки удаления */}
+            <th></th>
           </tr>
         </thead>
         <tbody>

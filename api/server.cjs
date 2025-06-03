@@ -122,7 +122,13 @@ app.use('/api/device-links', require('./root/device-links.cjs'));
 app.use('/api-docs', require('./root/swagger.cjs'));
 
 //API работы с эксель
-app.use('/api/users', require('./root/excel.cjs'));
+
+app.use('/api/users/excel', require('./root/excel.cjs')); 
+app.use('/api/meetings/excel', require('./root/meetings-excel.cjs')); // Новый маршрут для заседаний
+
+
+
+
 
 
 // API для записи голоса пользователя

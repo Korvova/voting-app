@@ -9,26 +9,22 @@ const prisma = new PrismaClient();
 const upload = multer({ storage: multer.memoryStorage() });
 
 /**
- * @route GET /api/users/export
+ * @route GET /api/users/excel/export
  * @desc Export users and divisions to Excel with two sheets and dropdown in Users
  * @access Public
  */
 router.get('/export', async (req, res) => {
   try {
-    // Получаем пользователей с данными о подразделении
     const users = await prisma.user.findMany({
       include: { division: true },
     });
 
-    // Получаем все подразделения
     const divisions = await prisma.division.findMany();
 
-    // Создаём новую книгу Excel
     const workbook = new ExcelJS.Workbook();
     const userSheet = workbook.addWorksheet('Users');
     const divisionSheet = workbook.addWorksheet('Divisions');
 
-    // Добавляем заголовки в лист Users
     userSheet.columns = [
       { header: 'ФИО', key: 'name', width: 20 },
       { header: 'Email', key: 'email', width: 30 },
@@ -36,7 +32,6 @@ router.get('/export', async (req, res) => {
       { header: 'Подразделение', key: 'division', width: 20 },
     ];
 
-    // Заполняем данные пользователей
     users.forEach(user => {
       userSheet.addRow({
         name: user.name,
@@ -46,21 +41,18 @@ router.get('/export', async (req, res) => {
       });
     });
 
-    // Добавляем заголовок в лист Divisions
     divisionSheet.columns = [
       { header: 'Название', key: 'name', width: 20 },
     ];
 
-    // Заполняем данные подразделений и добавляем "Нет"
     divisions.forEach(division => {
       divisionSheet.addRow({ name: division.name });
     });
     divisionSheet.addRow({ name: 'Нет' });
 
-    // Настраиваем выпадающий список для столбца Подразделение (D) в листе Users
     const divisionRange = 'Divisions!$A$2:$A$1048576';
     userSheet.getColumn('D').eachCell((cell, rowNumber) => {
-      if (rowNumber > 1) { // Пропускаем заголовок
+      if (rowNumber > 1) {
         cell.dataValidation = {
           type: 'list',
           allowBlank: true,
@@ -70,14 +62,11 @@ router.get('/export', async (req, res) => {
       }
     });
 
-    // Генерируем буфер
     const buffer = await workbook.xlsx.writeBuffer();
 
-    // Устанавливаем заголовки для скачивания
     res.setHeader('Content-Disposition', 'attachment; filename=users.xlsx');
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 
-    // Отправляем файл
     res.send(buffer);
   } catch (error) {
     console.error('Error exporting users:', error);
@@ -86,7 +75,7 @@ router.get('/export', async (req, res) => {
 });
 
 /**
- * @route POST /api/users/import
+ * @route POST /api/users/excel/import
  * @desc Import users and divisions from Excel with two sheets
  * @access Public
  */
@@ -99,7 +88,6 @@ router.post('/import', upload.array('file'), async (req, res) => {
     const file = req.files[0];
     const workbook = XLSX.read(file.buffer, { type: 'buffer' });
 
-    // Проверяем наличие листов
     const userSheetName = workbook.SheetNames.includes('Users') ? 'Users' : null;
     const divisionSheetName = workbook.SheetNames.includes('Divisions') ? 'Divisions' : null;
 
@@ -119,12 +107,9 @@ router.post('/import', upload.array('file'), async (req, res) => {
 
     const results = { addedUsers: 0, updatedUsers: 0, addedDivisions: 0, errors: [] };
 
-    // Обрабатываем подразделения в транзакции
     await prisma.$transaction(async (tx) => {
-      // Маппинг названий подразделений и их ID
       const divisionMap = new Map();
 
-      // Сначала обрабатываем лист Divisions
       for (const row of divisionData) {
         const divisionName = row['Название']?.toString().trim();
         if (!divisionName || divisionName === 'Нет') continue;
@@ -147,7 +132,6 @@ router.post('/import', upload.array('file'), async (req, res) => {
         }
       }
 
-      // Затем обрабатываем лист Users
       for (const row of userData) {
         try {
           const email = row['Email']?.toString().trim();

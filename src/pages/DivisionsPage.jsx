@@ -39,75 +39,79 @@ function DivisionsPage() {
     fetchUsers();
   }, []);
 
-  const handleExportToExcel = async () => {
-    try {
-      const response = await axios.get('http://217.114.10.226:5000/api/users/export', {
-        responseType: 'blob',
-      });
 
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', 'users.xlsx');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Error exporting divisions:', error.message);
-      alert('Ошибка при экспорте подразделений');
-    }
-  };
+
+const handleExportToExcel = async () => {
+  try {
+    const response = await axios.get('http://217.114.10.226:5000/api/users/excel/export', {
+      responseType: 'blob',
+    });
+
+    const url = window.URL.createObjectURL(new Blob([response.data]));
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', 'users.xlsx');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Error exporting divisions:', error.message);
+    alert('Ошибка при экспорте подразделений');
+  }
+};
+
 
   const handleImportFromExcel = () => {
     fileInputRef.current.click();
   };
 
-  const handleFileChange = async (e) => {
-    const file = e.target.files[0];
-    if (!file) {
-      return;
+  
+const handleFileChange = async (e) => {
+  const file = e.target.files[0];
+  if (!file) {
+    return;
+  }
+
+  if (!file.name.endsWith('.xlsx')) {
+    alert('Выберите файл формата .xlsx');
+    fileInputRef.current.value = '';
+    return;
+  }
+
+  setIsImporting(true);
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const response = await axios.post('http://217.114.10.226:5000/api/users/excel/import', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+
+    const { addedUsers, updatedUsers, addedDivisions, errors } = response.data;
+    let message = `Импорт завершен: добавлено ${addedUsers} пользователей, обновлено ${updatedUsers} пользователей, добавлено ${addedDivisions} подразделений.`;
+    if (errors.length > 0) {
+      message += `\nОшибки:\n${errors.join('\n')}`;
     }
+    alert(message);
 
-    if (!file.name.endsWith('.xlsx')) {
-      alert('Выберите файл формата .xlsx');
-      fileInputRef.current.value = '';
-      return;
-    }
+    const [divisionsResponse, usersResponse] = await Promise.all([
+      axios.get('http://217.114.10.226:5000/api/divisions'),
+      axios.get('http://217.114.10.226:5000/api/users'),
+    ]);
+    setDivisions(divisionsResponse.data);
+    setUsers(usersResponse.data);
+    setAvailableUsers(usersResponse.data.filter(user => !user.division || user.division === 'Нет'));
+  } catch (error) {
+    console.error('Error importing divisions:', error.message);
+    alert('Ошибка при импорте подразделений');
+  } finally {
+    setIsImporting(false);
+    fileInputRef.current.value = '';
+  }
+};
 
-    setIsImporting(true);
-
-    const formData = new FormData();
-    formData.append('file', file);
-
-    try {
-      const response = await axios.post('http://217.114.10.226:5000/api/users/import', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-
-      const { addedUsers, updatedUsers, addedDivisions, errors } = response.data;
-      let message = `Импорт завершен: добавлено ${addedUsers} пользователей, обновлено ${updatedUsers} пользователей, добавлено ${addedDivisions} подразделений.`;
-      if (errors.length > 0) {
-        message += `\nОшибки:\n${errors.join('\n')}`;
-      }
-      alert(message);
-
-      // Обновляем данные
-      const [divisionsResponse, usersResponse] = await Promise.all([
-        axios.get('http://217.114.10.226:5000/api/divisions'),
-        axios.get('http://217.114.10.226:5000/api/users'),
-      ]);
-      setDivisions(divisionsResponse.data);
-      setUsers(usersResponse.data);
-      setAvailableUsers(usersResponse.data.filter(user => !user.division || user.division === 'Нет'));
-    } catch (error) {
-      console.error('Error importing divisions:', error.message);
-      alert('Ошибка при импорте подразделений');
-    } finally {
-      setIsImporting(false);
-      fileInputRef.current.value = '';
-    }
-  };
 
   const handleAddDivision = () => {
     setShowAddModal(true);
