@@ -1,0 +1,63 @@
+.broadcast-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background-color: #f0f2f5;
+  font-family: 'Roboto', sans-serif;
+  position: relative;
+  width: 100%;
+}
+
+.registration-container {
+  text-align: center;
+  max-width: 800px;
+  padding: 20px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.logo {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  width: 100px;
+  height: auto;
+}
+
+.meeting-name {
+  font-size: 2.5rem;
+  margin: 20px 0;
+  color: #333;
+  text-align: center;
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 80%;
+}
+
+.registration-block {
+  text-align: left;
+  width: 100%;
+  max-width: 600px;
+}
+
+.registration-text {
+  font-size: 4rem;
+  font-weight: bold;
+  color: #2c3e50;
+  margin: 0 0 10px 0;
+  text-align: left;
+}
+
+.participant-count,
+.attendance,
+.absent-text {
+  font-size: 1.5rem;
+  margin: 5px 0;
+  color: #555;
+  text-align: left;
+}

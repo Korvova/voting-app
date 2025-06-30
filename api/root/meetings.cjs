@@ -522,6 +522,65 @@ module.exports = (prisma, pgClient) => {
     }
   });
 
+
+/**
+ * @api {get} /api/meetings/:id/participants Получение списка участников заседания
+ * @apiName ПолучениеУчастниковЗаседания
+ * @apiGroup Заседания
+ * @apiDescription Возвращает список пользователей, участвующих в заседании, на основе связанных подразделений. Включает только идентификатор, имя и статус онлайн/оффлайн.
+ * @apiParam {Number} id Идентификатор заседания (параметр пути, целое число).
+ * @apiSuccess {Object[]} participants Массив объектов участников.
+ * @apiSuccess {Number} participants.id Идентификатор пользователя.
+ * @apiSuccess {String} participants.name Имя пользователя.
+ * @apiSuccess {Boolean} participants.isOnline Статус пользователя (true, если онлайн).
+ * @apiError (404) NotFound Ошибка, если заседание не найдено.
+ * @apiError (500) ServerError Ошибка сервера или базы данных.
+ * @apiErrorExample {json} Пример ответа при ошибке (404):
+ *     {
+ *         "error": "Заседание не найдено"
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl http://217.114.10.226:5000/api/meetings/118/participants
+ */
+router.get('/:id/participants', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const meeting = await prisma.meeting.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        participants: {
+          select: {
+            id: true,
+            name: true,
+            isOnline: true,
+          },
+        },
+      },
+    });
+    if (!meeting) {
+      return res.status(404).json({ error: 'Заседание не найдено' });
+    }
+    res.json(meeting.participants);
+  } catch (error) {
+    console.error('Ошибка при получении участников заседания:', error);
+    res.status(500).json({ error: 'Не удалось получить участников' });
+  }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   /**
    * @api {post} /api/meetings/:id/status Обновление статуса заседания
    * @apiName ОбновлениеСтатусаЗаседания
