@@ -11,17 +11,23 @@ function BroadcastPage() {
   const [participants, setParticipants] = useState([]);
   const [agendaItems, setAgendaItems] = useState([]);
   const [voteResult, setVoteResult] = useState(null);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState(0);
+  const [absentUsers, setAbsentUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const socketRef = useRef(null);
 
   useEffect(() => {
     const fetchMeetingData = async () => {
       try {
-        const [meetingResponse, participantsResponse, agendaResponse, voteResultResponse] = await Promise.all([
+        const [meetingResponse, participantsResponse, agendaResponse, voteResultResponse, totalUsersResponse, onlineUsersResponse, absentUsersResponse] = await Promise.all([
           axios.get(`http://217.114.10.226:5000/api/meetings/${meetingId}`),
           axios.get(`http://217.114.10.226:5000/api/meetings/${meetingId}/participants`),
           axios.get(`http://217.114.10.226:5000/api/meetings/${meetingId}/agenda-items`),
           axios.get(`http://217.114.10.226:5000/api/vote-results?meetingId=${meetingId}`),
+          axios.get(`http://217.114.10.226:5000/api/meetings/${meetingId}/total-users`),
+          axios.get(`http://217.114.10.226:5000/api/meetings/${meetingId}/online-users`),
+          axios.get(`http://217.114.10.226:5000/api/meetings/${meetingId}/absent-users`),
         ]);
         setMeeting(meetingResponse.data);
         setParticipants(participantsResponse.data);
@@ -30,6 +36,9 @@ function BroadcastPage() {
           .filter(vr => ['PENDING', 'ENDED'].includes(vr.voteStatus))
           .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0];
         setVoteResult(latestVote || null);
+        setTotalUsers(totalUsersResponse.data.totalUsers || 0);
+        setOnlineUsers(onlineUsersResponse.data.onlineUsers || 0);
+        setAbsentUsers(absentUsersResponse.data.absentUsers || []);
         setLoading(false);
       } catch (error) {
         console.error('Error fetching meeting data:', error.message);
@@ -92,6 +101,19 @@ function BroadcastPage() {
       }
     });
 
+    socket.on('user-status-changed', (data) => {
+      console.log('User status changed in BroadcastPage:', data);
+      if (participants.some(p => p.id === data.userId)) {
+        setParticipants(prev =>
+          prev.map(p => p.id === data.userId ? { ...p, isOnline: data.isOnline } : p)
+        );
+        // Обновляем absentUsers через API после изменения статуса
+        axios.get(`http://217.114.10.226:5000/api/meetings/${meetingId}/absent-users`)
+          .then(response => setAbsentUsers(response.data.absentUsers || []))
+          .catch(error => console.error('Error fetching absent users:', error.message));
+      }
+    });
+
     socket.on('meeting-status-changed', (data) => {
       console.log('Meeting status changed in BroadcastPage:', data);
       if (data.id === parseInt(meetingId)) {
@@ -108,8 +130,6 @@ function BroadcastPage() {
 
   if (loading || !meeting) return <div>Загрузка...</div>;
 
-  const totalParticipants = participants.length;
-  const onlineParticipants = participants.filter(p => p.isOnline).length;
   const activeAgendaItem = agendaItems.find(item => item.activeIssue === true);
 
   return (
@@ -147,9 +167,9 @@ function BroadcastPage() {
           ) : (
             <>
               <h2 className="registration-text">РЕГИСТРАЦИЯ</h2>
-              <p className="participant-count">ПО СПИСКУ: {totalParticipants}</p>
-              <p className="attendance">Присутствуют {onlineParticipants} из {totalParticipants}</p>
-              <p className="absent-text">Отсутствует:</p>
+              <p className="participant-count">ПО СПИСКУ: {totalUsers}</p>
+              <p className="attendance">Присутствуют {onlineUsers} из {totalUsers}</p>
+              <p className="absent-text">Отсутствует: {absentUsers.join(', ') || '-'}</p>
             </>
           )}
         </div>

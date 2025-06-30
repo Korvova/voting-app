@@ -575,6 +575,152 @@ router.get('/:id/participants', async (req, res) => {
 
 
 
+/**
+ * @api {get} /api/meetings/:id/total-users Получение общего количества пользователей по подразделениям заседания
+ * @apiName ПолучениеОбщегоКоличестваПользователей
+ * @apiGroup Заседания
+ * @apiDescription Возвращает общее количество пользователей, связанных с подразделениями (divisions) указанного заседания. Используется для отображения итогового числа участников на странице заседания.
+ * @apiParam {Number} id Идентификатор заседания (параметр пути, целое число).
+ * @apiSuccess {Object} response Объект с общим количеством пользователей.
+ * @apiSuccess {Number} response.totalUsers Общее количество пользователей.
+ * @apiError (404) NotFound Ошибка, если заседание не найдено.
+ * @apiError (500) ServerError Ошибка сервера или базы данных.
+ * @apiErrorExample {json} Пример ответа при ошибке (404):
+ *     {
+ *         "error": "Заседание не найдено"
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl http://217.114.10.226:5000/api/meetings/118/total-users
+ */
+router.get('/:id/total-users', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const meeting = await prisma.meeting.findUnique({
+      where: { id: parseInt(id) },
+      include: { divisions: true },
+    });
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+    const divisionIds = meeting.divisions.map(d => d.id);
+    const userCounts = await Promise.all(
+      divisionIds.map(async (divisionId) => {
+        const count = await prisma.user.count({
+          where: { divisionId },
+        });
+        return count;
+      })
+    );
+    const totalUsers = userCounts.reduce((sum, count) => sum + count, 0);
+    res.json({ totalUsers });
+  } catch (error) {
+    console.error('Ошибка при подсчёте общего количества пользователей:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+
+
+
+/**
+ * @api {get} /api/meetings/:id/online-users Получение количества онлайн-пользователей по заседанию
+ * @apiName ПолучениеОнлайнПользователей
+ * @apiGroup Заседания
+ * @apiDescription Возвращает количество пользователей с статусом `isOnline: true`, связанных с подразделениями (divisions) указанного заседания. Используется для отображения текущего числа присутствующих участников.
+ * @apiParam {Number} id Идентификатор заседания (параметр пути, целое число).
+ * @apiSuccess {Object} response Объект с количеством онлайн-пользователей.
+ * @apiSuccess {Number} response.onlineUsers Количество пользователей онлайн.
+ * @apiError (404) NotFound Ошибка, если заседание не найдено.
+ * @apiError (500) ServerError Ошибка сервера или базы данных.
+ * @apiErrorExample {json} Пример ответа при ошибке (404):
+ *     {
+ *         "error": "Заседание не найдено"
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl http://217.114.10.226:5000/api/meetings/118/online-users
+ */
+router.get('/:id/online-users', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const meeting = await prisma.meeting.findUnique({
+      where: { id: parseInt(id) },
+      include: { divisions: true },
+    });
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+    const divisionIds = meeting.divisions.map(d => d.id);
+    const onlineUsers = await prisma.user.count({
+      where: {
+        divisionId: { in: divisionIds },
+        isOnline: true,
+      },
+    });
+    res.json({ onlineUsers });
+  } catch (error) {
+    console.error('Ошибка при подсчёте онлайн-пользователей:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+
+
+
+
+/**
+ * @api {get} /api/meetings/:id/absent-users Получение списка отсутствующих пользователей по заседанию
+ * @apiName ПолучениеОтсутствующихПользователей
+ * @apiGroup Заседания
+ * @apiDescription Возвращает массив имён пользователей, связанных с подразделениями (divisions) указанного заседания, у которых статус `isOnline: false`. Используется для отображения списка отсутствующих участников.
+ * @apiParam {Number} id Идентификатор заседания (параметр пути, целое число).
+ * @apiSuccess {Object} response Объект с массивом имён отсутствующих пользователей.
+ * @apiSuccess {String[]} absentUsers Массив имён пользователей с `isOnline: false`.
+ * @apiError (404) NotFound Ошибка, если заседание не найдено.
+ * @apiError (500) ServerError Ошибка сервера или базы данных.
+ * @apiErrorExample {json} Пример ответа при ошибке (404):
+ *     {
+ *         "error": "Заседание не найдено"
+ *     }
+ * @apiExample {curl} Пример запроса:
+ *     curl http://217.114.10.226:5000/api/meetings/118/absent-users
+ */
+router.get('/:id/absent-users', async (req, res) => {
+  const { id } = req.params;
+  try {
+    const meeting = await prisma.meeting.findUnique({
+      where: { id: parseInt(id) },
+      include: { divisions: true },
+    });
+    if (!meeting) {
+      return res.status(404).json({ error: 'Meeting not found' });
+    }
+    const divisionIds = meeting.divisions.map(d => d.id);
+    const absentUsers = await prisma.user.findMany({
+      where: {
+        divisionId: { in: divisionIds },
+        isOnline: false,
+      },
+      select: { name: true },
+    });
+    res.json({ absentUsers: absentUsers.map(user => user.name) });
+  } catch (error) {
+    console.error('Ошибка при получении списка отсутствующих пользователей:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+
+
+
+
+
+
 
 
 
