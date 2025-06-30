@@ -55,7 +55,20 @@
 
 .participant-count,
 .attendance,
-.absent-text {
+.absent-text,
+.vote-question,
+.vote-decision {
+  font-size: 1.5rem;
+  margin: 5px 0;
+  color: #555;
+  text-align: left;
+}
+
+.vote-stats {
+  margin-top: 10px;
+}
+
+.vote-stats p {
   font-size: 1.5rem;
   margin: 5px 0;
   color: #555;
